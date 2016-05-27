@@ -1,0 +1,16 @@
+**************
+INFORMATION FOR THE COMPILATION, DIRECTIVE FOR THE COMPILER:
+
+-std=c++11
+--expt-extended-lambda
+-D_MWAITXINTRIN_H_INCLUDED
+-I for the library location
+-o output
+#aggiungere architettura
+**************
+-aggiungere architettura arch per generazione del codice
+-Ask for the struct problem
+-
+
+
+
