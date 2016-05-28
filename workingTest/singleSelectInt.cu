@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
 		}
 */
 	
-		using tripleType = tripleContainer<int>; 	
+		using tripleType = tripleContainer<int>;
 
                 const int FILE_LENGHT = 100000;
 		size_t rdfSize = FILE_LENGHT * sizeof(tripleType);
