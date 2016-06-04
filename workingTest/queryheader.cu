@@ -13,7 +13,7 @@ struct tripleContainer {
         element_t subject;
         element_t predicate;
         element_t object;
-	element_t padding_4;
+	char padding[20];
 };
 
 /**
@@ -27,21 +27,27 @@ template<typename element_t>
 MGPU_DEVICE bool compare(element_t a, element_t b, compareType type) {
 	switch(type)
 	{
+		//Less than
 		case(compareType::LT):
 			return a < b;
-
+		
+		//Less or equal
 		case(compareType::LEQ):
 			return a <= b;
 
+		//Equal
 		case(compareType::EQ):	
 			return a == b;
 
+		//Greater or equal
 		case(compareType::GEQ):
 			return a >= b;
 
+		//Greater
 		case(compareType::GT):
 			return a > b;
 
+		//not compare, always return true.
 		case(compareType::NC):
 			return true;
 		
@@ -49,6 +55,8 @@ MGPU_DEVICE bool compare(element_t a, element_t b, compareType type) {
 			return false;
 	}
 }
+
+
 
 int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
 	const size_t zeroIndex = 0;
@@ -64,6 +72,7 @@ int separateWords(std::string inputString, std::vector<std::string> &wordVector,
 	wordVector.push_back(inputString);
 	return 0;
 }
+
 
 /*
 * Make multiple select query, with specified comparison condition,
@@ -83,19 +92,22 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 	const int storeSize, 
 	std::vector<compareType*> comparatorMask) 
 {
-	int querySize =  d_selectQueries.size();
 
-	standard_context_t context; 		
+	//Initialize elements
+	int querySize =  d_selectQueries.size();
+	standard_context_t context; 
 	auto compact = transform_compact(storeSize, context);
 	std::vector<mem_t<tripleContainer<element_t>>*> finalResults;
 
+	//Cycling on all the queries
 	for (int i = 0; i < querySize; i++) {
-		tripleContainer<element_t>* currentPointer = d_selectQueries[i]; 
-			
-		compareType subjectComparator = comparatorMask[i][0];	             	
+		//Save variable to pass to the lambda operator
+		tripleContainer<element_t>* currentPointer = d_selectQueries[i];
+		compareType subjectComparator = comparatorMask[i][0];
 		compareType predicateComparator = comparatorMask[i][1];
 		compareType objectComparator = comparatorMask[i][2];
 
+		//Execute the select query
 		int query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
 			bool subjectEqual = false;
 			bool predicateEqual = false;
@@ -108,6 +120,7 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 			return (subjectEqual && predicateEqual && objectEqual);
 		});
 
+		//Create and store queries results on device
 		mem_t<tripleContainer<element_t>>* currentResult = new mem_t<tripleContainer<element_t>>(query_count, context);
 		tripleContainer<element_t>* d_currentResult =  currentResult->data();
 
@@ -117,11 +130,12 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 		
 		finalResults.push_back(currentResult);
 	}
+
 	return finalResults;
 }
 
 
-// redefinition of < comparator function.
+//Redefinition of  comparator function.
 template<typename element_t>
 class TripleComparator
 {
@@ -136,13 +150,13 @@ class TripleComparator
 			joinMask[2] = mask[2];
                 };
 
+		
                 MGPU_DEVICE bool operator() (tripleContainer<element_t> a, tripleContainer<element_t> b) {
                         if ((joinMask[0]) && (a.subject <  b.subject)) {
                                 return true;
                         }
-			
- 
-                        if ((joinMask[1]) && (a.predicate <  b.perdicate)) {
+			 
+                        if ((joinMask[1]) && (a.predicate <  b.predicate)) {
                                 return true;
                         }
 
@@ -154,15 +168,9 @@ class TripleComparator
                 };
 };
 
-/*
-MGPU_DEVICE bool operator <(const tripleContainer x, const tripleContainer y) {
-        TripleComparator compare;
-        return compare(x,y);
-}*/
-
 
 template<typename element_t>
-MGPU_DEVICE void indexCopy(tripleContainer<element_t>* src, tripleContainer<element_t>* dest, int2* srcIndex, const bool x) 
+__global__ void indexCopy(tripleContainer<element_t>* src, tripleContainer<element_t>* dest, int2* srcIndex, const bool x) 
 {
 	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	int currentIndex = 0;
@@ -177,37 +185,29 @@ MGPU_DEVICE void indexCopy(tripleContainer<element_t>* src, tripleContainer<elem
 }
 
 template<typename element_t>
-std::vector<tripleContainer<element_t>*> rdfJoin(tripleContainer<element_t>* innerTable, int innerSize, tripleContainer<element_t>* outerTable, int outerSize, int joinMask[3]) 
+std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_t>* innerTable, int innerSize, tripleContainer<element_t>* outerTable, int outerSize, int joinMask[3])
 {
-
-
-	//COME PRENDERE I RISULTATI
 	standard_context_t context;
-	TripleComparator<element_t> comparator = new TripleComparator<element_t>(joinMask);
+	TripleComparator<element_t>* comparator = new TripleComparator<element_t>(joinMask);
 
 	//Sort the two input array
-	mergesort<empty_t, tripleContainer<element_t>, TripleComparator>(innerTable, innerSize , comparator, context);
-	mergesort<empty_t, tripleContainer<element_t>, TripleComparator>(outerTable, outerSize , comparator, context);
+	mergesort<empty_t, tripleContainer<element_t>, TripleComparator<element_t>>(innerTable, innerSize , *comparator, context);
+	mergesort<empty_t, tripleContainer<element_t>, TripleComparator<element_t>>(outerTable, outerSize , *comparator, context);
 
-	mem_t<int2> joinResult = inner_join<empty_t, tripleContainer<element_t>*,tripleContainer<element_t>*, TripleComparator>(innerTable, innerSize, outerTable, outerSize, comparator, context);	
+	mem_t<int2> joinResult = inner_join<empty_t, tripleContainer<element_t>*,tripleContainer<element_t>*, TripleComparator<element_t>>(innerTable, innerSize, outerTable, outerSize, *comparator, context);	
 
-	//Take index results from device memory
-	tripleContainer<element_t>* innerResults;
-	tripleContainer<element_t>* outerResults;
+	std::vector<mem_t<tripleContainer<element_t>>*> finalResults;
 
-	//TODO SETTARE VALORE SIZE
-	//size_t resultSize = 0 * sizeof(tripleContainer<element_t>);
-	size_t resultSize = joinResult._size;
-	cudaMalloc(&innerResults, resultSize);
-	cudaMalloc(&outerResults, resultSize);
-		
-	indexCopy(innerTable, innerResults, joinResult.data(), true);
-	indexCopy(outerTable, outerResults, joinResult.data(), false);
+	mem_t<tripleContainer<element_t>>* innerResults = new mem_t<tripleContainer<element_t>>(joinResult.size(), context);
+        mem_t<tripleContainer<element_t>>* outerResults = new mem_t<tripleContainer<element_t>>(joinResult.size(), context);
 
-	std::vector<tripleContainer<element_t>*> finalResult;
-	finalResult.push_back(innerResults);
-	finalResult.push_back(outerResults);
-	return finalResult;
+	indexCopy<<<1,joinResult.size()>>>(innerTable, innerResults->data(), joinResult.data(), true);
+	indexCopy<<<1,joinResult.size()>>>(outerTable, outerResults->data(), joinResult.data(), false);
+
+	finalResults.push_back(innerResults);
+	finalResults.push_back(outerResults);
+
+	return finalResults;
 }
 
 
@@ -233,7 +233,9 @@ int main(int argc, char** argv) {
                         std::vector<string> triple ;
                         separateWords(strInput, triple, ' ');
 
-                        h_rdfStore[i] =  {atoi(triple[0].c_str()), atoi(triple[1].c_str()), atoi( triple[2].c_str()), 0};
+			h_rdfStore[i].subject = atoi(triple[0].c_str());
+			h_rdfStore[i].predicate = atoi(triple[1].c_str());
+			h_rdfStore[i].object = atoi(triple[2].c_str());
                 }
                 rdfStoreFile.close();
 
@@ -246,7 +248,10 @@ int main(int argc, char** argv) {
 
                 for (int i = 0; i < queryLenght; i++) {
                         int index = 1 + i *  TUPLE_LENGHT;
-                        h_queryVector[i] = {atoi(argv[index]), atoi(argv[index + 1]), atoi(argv[index + 2]), 0};
+			
+			h_queryVector[i].subject = atoi(argv[index]);
+			h_queryVector[i].predicate = atoi(argv[index + 1]);
+			h_queryVector[i].object = atoi(argv[index + 2]);
                 }
 
 		tripleContainer<int>* d_storeVector;
@@ -256,31 +261,84 @@ int main(int argc, char** argv) {
 		cudaMalloc(&d_queryVector, sizeof(tripleContainer<int>));
 		cudaMemcpy(d_queryVector, h_queryVector, sizeof(tripleContainer<int>), cudaMemcpyHostToDevice);
 		
+		tripleContainer<int>* d_queryVector2;
+		cudaMalloc(&d_queryVector2, sizeof(tripleContainer<int>));
+		cudaMemcpy(d_queryVector2, h_queryVector, sizeof(tripleContainer<int>), cudaMemcpyHostToDevice);
+		
+	
 		std::vector<tripleContainer<int>*> selectQuery;
 		std::vector<int> selectResult;
 		selectQuery.push_back(d_queryVector);
+		selectQuery.push_back(d_queryVector2);
+
 		compareType equalComp = compareType::EQ;
 		std::vector<compareType*> compareMask;
 		compareType equalMask[3];
 		
 		equalMask[0] = equalComp;
-		equalMask[1] = compareType::NC;
+		equalMask[1] = compareType::LT;
 		equalMask[2] = compareType::NC;
-		
+
 		compareMask.push_back(equalMask);
-
+		
+		compareType equalMask2[3];		
+		equalMask2[0] = equalComp; 
+		equalMask2[1] = compareType::GT;
+		equalMask2[2] = compareType::NC;
+		
+		compareMask.push_back(equalMask2);
+		
                 std::vector<tripleContainer<int>*> resultPointer;
-
 
 		std::vector<mem_t<tripleContainer<int>>*> selectR = rdfSelect<int>(selectQuery, d_storeVector, FILE_LENGHT, compareMask); 
 			
+		tripleContainer<int>* innerTable = selectR[0]->data();
+		tripleContainer<int>* outerTable = selectR[1]->data();
+		
+		int joinMask[3];
+		joinMask[0] = 1;
+		joinMask[1] = 0;
+		joinMask[2] = 0;
+		
+		std::cout << " join" << endl;
+		
+		vector<mem_t<tripleContainer<int>>*> joinR;		
+
+		joinR = rdfJoin(innerTable, selectR[0]->size(), outerTable, selectR[1]->size(), joinMask);
+
+		std::cout << "joinnato" << endl;	
+
 		std::vector<tripleContainer<int>> provasd = from_mem(*selectR[0]);
 
 		for (int i = 0; i < provasd.size(); i++ ) {
 			std::cout << provasd[i].subject << " " << provasd[i].predicate << " " << provasd[i].object << std::endl;
 		}
 
+		 provasd = from_mem(*selectR[1]);
+		std::cout << "ALLALAL" << endl;
+
+                for (int i = 0; i < provasd.size(); i++ ) {
+                        std::cout << provasd[i].subject << " " << provasd[i].predicate << " " << provasd[i].object << std::endl;
+                }
+
+                 provasd = from_mem(*joinR[0]);
+                std::cout << "ALLALAL" << endl;
+
+                for (int i = 0; i < provasd.size(); i++ ) {
+                        std::cout << provasd[i].subject << " " << provasd[i].predicate << " " << provasd[i].object << std::endl;
+                }
+
+                 provasd = from_mem(*joinR[1]);
+                std::cout << "ALLALAL" << endl;
+
+                for (int i = 0; i < provasd.size(); i++ ) {
+                        std::cout << provasd[i].subject << " " << provasd[i].predicate << " " << provasd[i].object << std::endl;
+                }
+
+
+
 		return 0;
+
 }
 
 
