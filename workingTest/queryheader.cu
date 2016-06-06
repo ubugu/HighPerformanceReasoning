@@ -13,7 +13,7 @@ struct tripleContainer {
         element_t subject;
         element_t predicate;
         element_t object;
-	element_t padding_4;
+	char padding[20];
 };
 
 /**
@@ -27,21 +27,27 @@ template<typename element_t>
 MGPU_DEVICE bool compare(element_t a, element_t b, compareType type) {
 	switch(type)
 	{
+		//Less than
 		case(compareType::LT):
 			return a < b;
-
+		
+		//Less or equal
 		case(compareType::LEQ):
 			return a <= b;
 
+		//Equal
 		case(compareType::EQ):	
 			return a == b;
 
+		//Greater or equal
 		case(compareType::GEQ):
 			return a >= b;
 
+		//Greater
 		case(compareType::GT):
 			return a > b;
 
+		//not compare, always return true.
 		case(compareType::NC):
 			return true;
 		
@@ -49,6 +55,8 @@ MGPU_DEVICE bool compare(element_t a, element_t b, compareType type) {
 			return false;
 	}
 }
+
+
 
 int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
 	const size_t zeroIndex = 0;
@@ -64,6 +72,7 @@ int separateWords(std::string inputString, std::vector<std::string> &wordVector,
 	wordVector.push_back(inputString);
 	return 0;
 }
+
 
 /*
 * Make multiple select query, with specified comparison condition,
@@ -83,19 +92,22 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 		const int storeSize, 
 		std::vector<compareType*> comparatorMask) 
 {
-	int querySize =  d_selectQueries.size();
 
-	standard_context_t context; 		
+	//Initialize elements
+	int querySize =  d_selectQueries.size();
+	standard_context_t context; 
 	auto compact = transform_compact(storeSize, context);
 	std::vector<mem_t<tripleContainer<element_t>>*> finalResults;
 
+	//Cycling on all the queries
 	for (int i = 0; i < querySize; i++) {
-		tripleContainer<element_t>* currentPointer = d_selectQueries[i]; 
-			
-		compareType subjectComparator = comparatorMask[i][0];	             	
+		//Save variable to pass to the lambda operator
+		tripleContainer<element_t>* currentPointer = d_selectQueries[i];
+		compareType subjectComparator = comparatorMask[i][0];
 		compareType predicateComparator = comparatorMask[i][1];
 		compareType objectComparator = comparatorMask[i][2];
 
+		//Execute the select query
 		int query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
 			bool subjectEqual = false;
 			bool predicateEqual = false;
@@ -108,6 +120,7 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 			return (subjectEqual && predicateEqual && objectEqual);
 		});
 
+		//Create and store queries results on device
 		mem_t<tripleContainer<element_t>>* currentResult = new mem_t<tripleContainer<element_t>>(query_count, context);
 		tripleContainer<element_t>* d_currentResult =  currentResult->data();
 
@@ -117,11 +130,12 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 		
 		finalResults.push_back(currentResult);
 	}
+
 	return finalResults;
 }
 
 
-// redefinition of < comparator function.
+//Redefinition of  comparator function.
 template<typename element_t>
 class TripleComparator
 {
@@ -136,12 +150,12 @@ class TripleComparator
 			joinMask[2] = mask[2];
                 };
 
+		
                 MGPU_DEVICE bool operator() (tripleContainer<element_t> a, tripleContainer<element_t> b) {
                         if ((joinMask[0]) && (a.subject <  b.subject)) {
                                 return true;
                         }
-			
- 
+
                         if ((joinMask[1]) && (a.predicate <  b.predicate)) {
                                 return true;
                         }
@@ -153,12 +167,6 @@ class TripleComparator
                         return false;
                 };
 };
-
-/*
-MGPU_DEVICE bool operator <(const tripleContainer x, const tripleContainer y) {
-        TripleComparator compare;
-        return compare(x,y);
-}*/
 
 
 template<typename element_t>
@@ -199,6 +207,7 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_
 
 	finalResults.push_back(innerResults);
 	finalResults.push_back(outerResults);
+
 
 	return finalResults;
 }
