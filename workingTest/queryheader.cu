@@ -204,6 +204,114 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_
 }
 
 
+//Section for defining operation classes
+
+template <typename element_t>
+class RelationalOperation
+{
+	typedef mem_t<tripleContainer <element_t>> opElem_t;
+
+	private:
+		opElem_t* result = 0;	
+	public:
+		opElem_t* getResult() {
+			return this->result;
+		};
+		
+		void setResult(opElem_t* result) {
+			this->result = result;
+		};
+		
+};
+
+template <typename element_t>
+class JoinOperation : public RelationalOperation<element_t>
+{
+	typedef mem_t<tripleContainer <element_t>> opElem_t;
+	
+	private:
+		opElem_t* innerTable;
+		opElem_t* outerTable;
+		int mask[3];
+
+	public:
+		JoinOperation(opElem_t* innerTable, opElem_t* outerTable, int mask[3]) {
+			this->innerTable = innerTable;
+			this->outerTable = outerTable;
+			std::copy(mask, mask + 3, this->mask);
+		};
+			
+		opElem_t* getInnerTable() {
+			return this->innerTable;
+		};
+		
+		opElem_t* getOuterTable() {
+			return this->outerTable;
+		};
+		
+		int* getMask() {
+			return this->mask;
+		};		
+};
+
+template<typename element_t>
+class SelectOperation : public RelationalOperation<element_t>
+{
+	typedef mem_t<tripleContainer <element_t>> opElem_t;
+	
+	private:
+		opElem_t* query;
+		compareType operationMask[3];
+
+	public:
+		SelectOperation(opElem_t* query, compareType operationMask[3]) {
+			this->query = query;
+			std::copy(operationMask, operationMask + 3, this->operationMaskoperationMask);
+		};
+			
+		opElem_t* getQuery() {
+			return this->query;
+		};
+		
+		compareType* getOperationMask() {
+			return this->operationMask;
+		};
+};
+
+
+template <typename element_t>
+void queryManager(std::vector<SelectOperation<element_t>> selectOp, std::vector<JoinOperation<element_t>> joinOp, const tripleContainer<element_t>* d_storePointer, const int storeSize) {
+
+	std::vector<tripleContainer<element_t>*> d_selectQueries;
+	std::vector<compareType*> comparatorMask;
+	
+	for (int i = 0; i < selectOp.size(); i++) {
+		d_selectQueries.push_back(selectOp[i].getQuery().data());
+		comparatorMask.push_back(selectOp[1].getOperationMask());
+	}
+
+	std::vector<mem_t<tripleContainer<element_t>>*> selectResults = rdfSelect(d_selectQueries, d_storePointer, storeSize, comparatorMask);
+	
+	for (int i = 0; i < selectResults.size(); i++) {
+		for (int k = 0; k < selectOp.size(); k++) {
+			selectOp[k].setResult(selectResults[i]);
+		}
+	}
+	
+	
+	/***
+	** FOR NOW KEEP THE INNER TABLE RESULT AS THE RESULT FOR EACH JOIN. cHECK IF THIS IS CORRECT;
+	** THE PARSER WILL TAKE HANDLE OF INSERTING IN THE INNER TABLTHE RIGHT ELEMENT
+	***/
+	for (int i = 0; i < joinOp; i++) {
+		std::vector<mem_t<tripleContainer<element_t>>*>  joinResult = rdfJoin(joinOp[i].getInnerTable.data(), joinOp[i].getInnerTable.size(), joinOp[i].getOuterTable.data(), joinOp[i].getOuterTable.size(), *joinOp[i].getMask());	
+		
+		joinOp.setResult(joinResult[0]);
+	}
+	
+	
+}
+
 
 int main(int argc, char** argv) {
 		using namespace std;
