@@ -6,7 +6,7 @@
 int main(int argc,char *argv[]) 
 {
 	using namespace std;
-	cout << "insert size, random factor (max value), path)" << endl;
+	//THE FORMAT IS: NUMBER OF TRIPLE, MAX VALUE, PATH
 
 	ofstream outf(argv[3]);
 
