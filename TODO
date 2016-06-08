@@ -1,5 +1,7 @@
 TODO
 
--Scrivere per la correzzione dell'errore
+-Fare prova con algoritmo alternativo
 
--scrivere per capire cosa fare della struct
+-Riscrivere bene metodo query manager
+
+-Provare launch_param per struct >32 byte
