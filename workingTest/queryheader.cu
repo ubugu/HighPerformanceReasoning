@@ -5,6 +5,8 @@
 #include <moderngpu/kernel_join.hxx>
 #include <moderngpu/kernel_mergesort.hxx>
 #include <sys/time.h>
+#include <functional>
+
 
 using namespace mgpu;
 
@@ -106,13 +108,15 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 		compareType subjectComparator = comparatorMask[i][0];
 		compareType predicateComparator = comparatorMask[i][1];
 		compareType objectComparator = comparatorMask[i][2];
-
+	
 		//Execute the select query
 		int query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
 			bool subjectEqual = false;
 			bool predicateEqual = false;
 			bool objectEqual = false;
+		
 
+   		
 			subjectEqual = compare<element_t>(d_storePointer[index].subject, currentPointer->subject, subjectComparator);
 			predicateEqual = compare<element_t>(d_storePointer[index].predicate, currentPointer->predicate, predicateComparator);
 			objectEqual = compare<element_t>(d_storePointer[index].object, currentPointer->object, objectComparator);
@@ -192,11 +196,11 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_
 	TripleComparator<element_t>* comparator = new TripleComparator<element_t>(joinMask);
 
 	//Sort the two input array
-	mergesort<empty_t, tripleContainer<element_t>, TripleComparator<element_t>>(innerTable, innerSize , *comparator, context);
-	mergesort<empty_t, tripleContainer<element_t>, TripleComparator<element_t>>(outerTable, outerSize , *comparator, context);
+	mergesort<launch_params_t<128, 4>>(innerTable, innerSize , *comparator, context);
+	mergesort<launch_params_t<128, 4>>(outerTable, outerSize , *comparator, context);
 	
-	mem_t<int2> joinResult = inner_join<empty_t, tripleContainer<element_t>*,tripleContainer<element_t>*, TripleComparator<element_t>>(innerTable, innerSize, outerTable, outerSize, *comparator, context);	
-
+	mem_t<int2> joinResult = inner_join<launch_params_t<128, 4>>(innerTable, innerSize, outerTable, outerSize, *comparator, context);	
+	
 	std::vector<mem_t<tripleContainer<element_t>>*> finalResults;
 
 	mem_t<tripleContainer<element_t>>* innerResults = new mem_t<tripleContainer<element_t>>(joinResult.size(), context);
@@ -313,7 +317,7 @@ void queryManager(std::vector<SelectOperation<element_t>*> selectOp, std::vector
 		mem_t<tripleContainer<element_t>>* innerTable = *joinOp[i]->getInnerTable();
 		mem_t<tripleContainer<element_t>>* outerTable = *joinOp[i]->getOuterTable();
 		std::vector<mem_t<tripleContainer<element_t>>*>  joinResult = rdfJoin(innerTable->data(), innerTable->size(), outerTable->data(), outerTable->size(), joinOp[i]->getMask());
-		joinOp[i]->setResult(joinResult[0]);
+//		joinOp[i]->setResult(joinResult[0]);
 	}
 	
 }
@@ -418,7 +422,7 @@ int main(int argc, char** argv) {
 		cout << "Total time: " << prTime << endl;
 		cout << "Cuda time: " << cuTime << endl;
 		cout << "Execution time: " << exTime << endl;
-		
+/*		
 		cout << "first select result" << endl;
 		std::vector<tripleContainer<int>> selectResults = from_mem(*selectOp1.getResult());
 		cout << selectResults.size() << endl;
@@ -439,7 +443,7 @@ int main(int argc, char** argv) {
 		for (int i = 0; i < finalResults.size(); i++) {
 			cout << finalResults[i].subject << " " << finalResults[i].predicate << " "  << finalResults[i].object << endl; 
 		}
-		
+	*/	
 		return 0;
 
 }

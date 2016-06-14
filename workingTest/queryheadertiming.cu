@@ -182,7 +182,7 @@ __global__ void indexCopy(tripleContainer<element_t>* src, tripleContainer<eleme
 		currentIndex = srcIndex[destIndex].y;
 	}
 
-	dest[destIndex] = src[currentIndex];
+	dest[currentIndex] = src[currentIndex];
 }
 
 
@@ -200,11 +200,10 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_
 
 	std::vector<mem_t<tripleContainer<element_t>>*> finalResults;
 
-	mem_t<tripleContainer<element_t>>* innerResults = new mem_t<tripleContainer<element_t>>(joinResult.size(), context);
-        mem_t<tripleContainer<element_t>>* outerResults = new mem_t<tripleContainer<element_t>>(joinResult.size(), context);
+	mem_t<tripleContainer<element_t>>* innerResults = new mem_t<tripleContainer<element_t>>(innerSize, context);
+        mem_t<tripleContainer<element_t>>* outerResults = 0;
 
 	indexCopy<<<1,joinResult.size()>>>(innerTable, innerResults->data(), joinResult.data(), true);
-	indexCopy<<<1,joinResult.size()>>>(outerTable, outerResults->data(), joinResult.data(), false);
 
 	finalResults.push_back(innerResults);
 	finalResults.push_back(outerResults);
