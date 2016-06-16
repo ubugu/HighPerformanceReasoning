@@ -29,65 +29,60 @@ public class App
 {
     public static void main( String[] args ) throws IOException
     {
-        Repository repo = new SailRepository(new MemoryStore());
-        File file =  new File("../rdfStore/rdf2.txt");
-        String baseURI = "http://example.org/example/local";
-        //copy();
-        try {
+        
+      	try {
+      		//Open rdf repository, file and connection to repository
+      		Repository repo = new SailRepository(new MemoryStore());
+	        File file =  new File("../rdfStore/rdf3.txt");
+	        String baseURI = "http://example.org/example/local";
 		repo.initialize();
 		RepositoryConnection con = repo.getConnection();
 
 		List timeVec = new LinkedList();
 		int N_CYCLES = 50;
-		
-
-		try {
-			con.add(file, baseURI, RDFFormat.NTRIPLES);
+				
+		con.add(file, baseURI, RDFFormat.NTRIPLES);
+					
+		for (int i =0; i <N_CYCLES;  i ++) {
+			double startTime = System.nanoTime();
 			
-			
-
-		        long startTime = System.nanoTime();
 			String queryString = "SELECT ?p ?y WHERE { <http://example.org/int/0> ?p ?y . <http://example.org/int/0> ?p ?y } ";
 			TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
-		    	List<BindingSet> resultList;
 		    	TupleQueryResult result = tupleQuery.evaluate();
+		    	
+		    	//Force evaluation or results (as suggested by sesame)
+		    	List<BindingSet> resultList;
 		    	resultList = QueryResults.asList(result);
-		    	long endTime = System.nanoTime();
-			Long duration = new Long((endTime - startTime) / 100000);
-//		    	System.out.println(i);
-			System.out.println(duration.longValue() );
+		    	
+		    	double time = System.nanoTime() - startTime;
+		    	double duration = new Double(time / (double) 1000000);
 			timeVec.add(duration);
-			
-			
-			
-			long mean = 0;
-			long variance = 0;
-			for (Object value : timeVec) {
-				
-				Long value2 = (Long) value;
-				System.out.println(value2.longValue());
-				mean += value2.longValue();
-				variance += value2.longValue() * value2.longValue();
-			}
-			mean = mean / timeVec.size();
-			variance = variance / timeVec.size();
-			variance = variance - mean * mean;
-			System.out.println("Variance is " + variance);
-			System.out.println("Mean is " + mean);
-
-	   	}   catch (Exception e) {
-
-	   		System.out.println("inner error");
-	   		System.out.println(e);
-	      	}
+		}
 		
-
+		
+		double mean = 0;
+		double variance = 0;
+		
+		for (Object value : timeVec) {
+			Double value2 = (Double) value;
+			System.out.println(value2.doubleValue());
+			mean += value2.doubleValue();
+			variance += value2.doubleValue() * value2.doubleValue();
+		}
+		mean = mean / (double) timeVec.size();
+		variance = variance / (double) timeVec.size();
+		variance = variance - mean * mean;
+		
+		System.out.println("Variance is " + variance);
+		System.out.println("Mean is " + mean);
+	
 	} catch (Exception e) {
 
-		System.out.println("outer error");
+		System.out.println("error :");
+		System.out.println(e);
 		e.printStackTrace();
 	}
 
-        System.out.println("Funza");
+      
     }
 }
