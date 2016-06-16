@@ -7,7 +7,6 @@
 #include <sys/time.h>
 #include <functional>
 
-
 using namespace mgpu;
 
 //struct to contains a single triple with a element_t type.
@@ -376,14 +375,14 @@ int main(int argc, char** argv) {
 		compareType selectMask1[3];
 		
 		selectMask1[0] = compareType::EQ;
-		selectMask1[1] = compareType::GT;
+		selectMask1[1] = compareType::NC;
 		selectMask1[2] = compareType::NC;
 
 		compareMask.push_back(selectMask1);
 		
 		compareType selectMask2[3];		
 		selectMask2[0] = compareType::EQ;
-		selectMask2[1] = compareType::LT;
+		selectMask2[1] = compareType::NC;
 		selectMask2[2] = compareType::NC;
 		
 		compareMask.push_back(selectMask2);
@@ -422,25 +421,25 @@ int main(int argc, char** argv) {
 		cout << "Total time: " << prTime << endl;
 		cout << "Cuda time: " << cuTime << endl;
 		cout << "Execution time: " << exTime << endl;
-/*		
+		
 		cout << "first select result" << endl;
 		std::vector<tripleContainer<int>> selectResults = from_mem(*selectOp1.getResult());
 		cout << selectResults.size() << endl;
-		for (int i = 0; i < selectResults.size(); i++) {
+	/*	for (int i = 0; i < selectResults.size(); i++) {
 			cout << selectResults[i].subject << " " << selectResults[i].predicate << " "  << selectResults[i].object << endl; 
 		}
-		
+	*/	
 		cout << "second select result" << endl;
 		std::vector<tripleContainer<int>> selectResults2 = from_mem(*selectOp2.getResult());
 		cout << selectResults2.size() << endl;
-		for (int i = 0; i < selectResults2.size(); i++) {
+/*		for (int i = 0; i < selectResults2.size(); i++) {
 			cout << selectResults2[i].subject << " " << selectResults2[i].predicate << " "  << selectResults2[i].object << endl; 
 		}
-		
+*/		
 		cout << "final result" << endl;
 		std::vector<tripleContainer<int>> finalResults = from_mem(*joinOp.getResult());
 		cout << finalResults.size() << endl;
-		for (int i = 0; i < finalResults.size(); i++) {
+	/*	for (int i = 0; i < finalResults.size(); i++) {
 			cout << finalResults[i].subject << " " << finalResults[i].predicate << " "  << finalResults[i].object << endl; 
 		}
 	*/	

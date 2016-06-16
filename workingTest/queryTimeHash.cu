@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
@@ -5,6 +6,7 @@
 #include <moderngpu/kernel_join.hxx>
 #include <moderngpu/kernel_mergesort.hxx>
 #include <sys/time.h>
+#include <unordered_map>
 
 using namespace mgpu;
 
@@ -17,19 +19,6 @@ struct tripleContainer {
         element_t object;
 };
 
-
-const int MAX_LENGHT = 50;
-
-__device__ int strcasecmp_d(const char *s1, const char *s2)
-{
-          int c1, c2;
-  
-          do {
-                  c1 = *s1++;
-                  c2 = *s2++;
-          } while (c1 == c2 && c1 != 0);
-          return c1 - c2;
- }
  
 /**
 * Enum for condition that are applied 
@@ -37,29 +26,29 @@ __device__ int strcasecmp_d(const char *s1, const char *s2)
 * to them.
 **/
 enum compareType {LT, LEQ, EQ, GT, GEQ, NC};
-MGPU_DEVICE bool compare(const char a[MAX_LENGHT], const char b[MAX_LENGHT], compareType type) {
+MGPU_DEVICE bool compare(int a, int b,  compareType type) {
 	switch(type)
 	{
 	
 		//Less than
 		case(compareType::LT):
-			return strcasecmp_d(a, b) < 0;
+			return a < b;
 		
 		//Less or equal
 		case(compareType::LEQ):
-			return strcasecmp_d(a, b) <= 0;
+			return a <= b;
 
 		//Equal
 		case(compareType::EQ):	
-			return strcasecmp_d(a, b) == 0;
+			return a == b;
 
 		//Greater or equal
 		case(compareType::GEQ):
-			return strcasecmp_d(a, b) >= 0;
+			return a >= b;
 
 		//Greater
 		case(compareType::GT):
-			return strcasecmp_d(a, b) > 0;
+			return a > b;
 
 		//not compare, always return true.
 		case(compareType::NC):
@@ -207,19 +196,16 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_
 	std::vector<mem_t<tripleContainer<element_t>>*> finalResults;
 
 	//Sort the two input array
-	mergesort<launch_params_t<256, 1> >(innerTable, innerSize , *comparator, context);
-	mergesort<launch_params_t<256, 1> >(outerTable, outerSize , *comparator, context);
+	mergesort(innerTable, innerSize , *comparator, context);
+	mergesort(outerTable, outerSize , *comparator, context);
 	
-	mem_t<int2> joinResult = inner_join<launch_params_t<256, 1> >(innerTable, innerSize, outerTable, outerSize, *comparator, context);	
+	mem_t<int2> joinResult = inner_join(innerTable, innerSize, outerTable, outerSize, *comparator, context);	
 
 
 	mem_t<tripleContainer<element_t>>* innerResults = new mem_t<tripleContainer<element_t>>(innerSize, context);
         mem_t<tripleContainer<element_t>>* outerResults = 0;
-
-	//TODO divedere in numero diblocchi/thread corretto
-	int gridSize = 64;
-	int blockSize = (joinResult.size() / gridSize) + 1;        
-	indexCopy<<<gridSize, blockSize>>>(innerTable, innerResults->data(), joinResult.data(), true);
+        
+	indexCopy<<<1,joinResult.size()>>>(innerTable, innerResults->data(), joinResult.data(), true);
 
 
 	finalResults.push_back(innerResults);
@@ -334,52 +320,84 @@ void queryManager(std::vector<SelectOperation<element_t>*> selectOp, std::vector
 int main(int argc, char** argv) {
  
 		using namespace std;
-		struct timeval beginPr, beginCu, beginEx, end;
+		struct timeval beginPr, beginCu, beginEx, end, beginHash, endHash;
+
+
 		gettimeofday(&beginPr, NULL);	
 		
-		using tripleElement = char[MAX_LENGHT];
+		using tripleElement = int;
 		
 		cudaDeviceReset();
 		standard_context_t context;
 		
                 const int FILE_LENGHT = 299829;
-              	           
-                size_t rdfSize = FILE_LENGHT * sizeof(tripleContainer<tripleElement>);
-                tripleContainer<tripleElement>* h_rdfStore = (tripleContainer<tripleElement>*) malloc(rdfSize);
+              	 
+		const int MAX_LENGHT = 100;
+
+                size_t rdfSize = FILE_LENGHT * sizeof(tripleContainer<char[MAX_LENGHT]>);
+                tripleContainer<char[MAX_LENGHT]>* h_rdfStore = (tripleContainer<char[MAX_LENGHT]>*) malloc(rdfSize);
 
                 //read store from rdfStore
                 ifstream rdfStoreFile ("../rdfStore/rdf2.txt");
 
                 string strInput;
 
+		std::unordered_map<string, int> m;
 
-		int size = 0;		
-		char emptyBuff[MAX_LENGHT] = {0};
-	
+		
+                int size = 0;
+                char emptyBuff[MAX_LENGHT] = {0};
+
                 for (int i = 0; i < FILE_LENGHT; i++) {
                         getline(rdfStoreFile,strInput);
-                	std::vector<string> triple ;
+                        std::vector<string> triple ;
                         separateWords(strInput, triple, ' ');
-                        
-                        
+
+
                         size = triple[0].size();
                         strncpy(h_rdfStore[i].subject, emptyBuff, MAX_LENGHT);
                         strncpy(h_rdfStore[i].subject, triple[0].c_str(), size);
-        
-                        
-        
+
+
+
                         size = triple[1].size();
                         strncpy(h_rdfStore[i].predicate, emptyBuff, MAX_LENGHT);
                         strncpy(h_rdfStore[i].predicate, triple[1].c_str(), size);
-                        
+
                         size = triple[2].size();
                         strncpy(h_rdfStore[i].object, emptyBuff, MAX_LENGHT);
                         strncpy(h_rdfStore[i].object, triple[2].c_str(), size);
-                       
+	
+
                 }
-                
+
                 rdfStoreFile.close();
 
+                gettimeofday(&beginHash, NULL);
+		size = 0;
+		for (int i = 0; i < FILE_LENGHT; i++) {
+			size = m.size();
+			std::pair<std::string,double> subject (h_rdfStore[i].subject, size);
+			m.insert(subject);
+
+                        size = m.size();
+                        std::pair<std::string,double> predicate (h_rdfStore[i].predicate, size);
+                        m.insert(predicate);
+
+                        size = m.size();
+                        std::pair<std::string,double> object (h_rdfStore[i].object, size);
+                        m.insert(object);
+
+
+		}		
+
+	        gettimeofday(&endHash, NULL);
+
+                float hashTime = (endHash.tv_sec - beginHash.tv_sec ) * 1000 + ((float) endHash.tv_usec - (float) beginHash.tv_usec) / 1000 ;
+		cout << hashTime << endl;
+
+		return 0;
+/*
 		std::vector<float> timeVector;                
 
                 int N_CYCLE = 100;
@@ -393,23 +411,9 @@ int main(int argc, char** argv) {
 	
 			
 		        //set Queries (select that will be joined)
-		        tripleContainer<tripleElement> h_queryVector1; 
-		        tripleContainer<tripleElement> h_queryVector2;
-		        
-		        char subject1[MAX_LENGHT] = {0};  
-		     	
-	       	
-		     	auto str = "<http://example.org/int/0>";
-		     	std::copy(str, str + 26, subject1);
-		        
-		     	strncpy(h_queryVector1.subject, subject1, MAX_LENGHT);      	
-		     	strncpy(h_queryVector1.predicate, emptyBuff, MAX_LENGHT);
-		     	strncpy(h_queryVector1.object, emptyBuff, MAX_LENGHT);
-		     	
-		        strncpy(h_queryVector2.subject, subject1, MAX_LENGHT);      	
-		     	strncpy(h_queryVector2.predicate, emptyBuff, MAX_LENGHT);
-		     	strncpy(h_queryVector2.object, emptyBuff, MAX_LENGHT);
-		 	         	              
+		        tripleContainer<tripleElement> h_queryVector1 = {0, 1, 2}; 
+		        tripleContainer<tripleElement> h_queryVector2 = {0, 2 , 2};		        
+		                     
 		        mem_t<tripleContainer<tripleElement>> d_queryVector1(1, context);
 			cudaMemcpy(d_queryVector1.data(), &h_queryVector1, sizeof(tripleContainer<tripleElement>), cudaMemcpyHostToDevice);
 		
@@ -483,21 +487,21 @@ int main(int argc, char** argv) {
 			cout << selectResults.size() << endl;
 		/*	for (int i = 0; i < selectResults.size(); i++) {
 				cout << selectResults[i].subject << " " << selectResults[i].predicate << " "  << selectResults[i].object << endl; 
-			}*/
+			}
 		
 			cout << "second select result" << endl;
 	
 			cout << selectResults2.size() << endl;
 		/*	for (int i = 0; i < selectResults2.size(); i++) {
 				cout << selectResults2[i].subject << " " << selectResults2[i].predicate << " "  << selectResults2[i].object << endl; 
-			}*/
+			}
 		
 			cout << "final result" << endl;
 			
 			cout << finalResults.size() << endl;
-		/*	for (int i = 0; i < finalResults.size(); i++) {
+			for (int i = 0; i < finalResults.size(); i++) {
 				cout << finalResults[i].subject << " " << finalResults[i].predicate << " "  << finalResults[i].object << endl; 
-			} */
+			} 
 			
 			
 			
@@ -528,7 +532,7 @@ int main(int argc, char** argv) {
 		
 		return 0;
 
-
+	*/
 }
 
 
