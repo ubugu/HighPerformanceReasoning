@@ -58,7 +58,6 @@ MGPU_DEVICE bool compare(int a, int b,  compareType type) {
 }
 
 
-
 int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
 	const size_t zeroIndex = 0;
 	size_t splitIndex = inputString.find(separator);
@@ -136,45 +135,91 @@ std::vector<mem_t<tripleContainer<element_t>>*> rdfSelect(const std::vector<trip
 }
 
 
-//Redefinition of  comparator function.
-template<typename element_t>
-class TripleComparator
+enum class JoinMask {NJ = -1, SBJ = 0, PRE = 1, OBJ = 2};
+
+class TripleSorter
 {
 	private:
-		int joinMask[3];
-
-        public:
-                TripleComparator(int mask[3])
-                {
-			joinMask[0] = mask[0];
-			joinMask[1] = mask[1];
-			joinMask[2] = mask[2];
-                };
-
+		int sortMask[3];
+	public:
+		TripleSorter(JoinMask sortMask[3]) {
+			this->sortMask[0] = static_cast<int> (sortMask[0]);
+			this->sortMask[1] = static_cast<int> (sortMask[1]);
+			this->sortMask[2] = static_cast<int> (sortMask[2]);
+				
+		}
 		
-                MGPU_DEVICE bool operator() (tripleContainer<element_t> a, tripleContainer<element_t> b) {
-                        if ((joinMask[0]) && (a.subject <  b.subject)) {
-                                return true;
-                        }
-
-                        if ((joinMask[1]) && (a.predicate <  b.predicate)) {
-                                return true;
-                        }
-
-                        if ((joinMask[2]) && (a.object <  b.object)) {
-                                return true;
-                        }
+		MGPU_DEVICE bool operator() (tripleContainer<int> a, tripleContainer<int> b) {
+			int tripleA[3] = {a.subject, a.predicate, a.object};
+			int tripleB[3] = {b.subject, b.predicate, b.object};
 			
-                        return false;
-                };
+			if ((sortMask[0] != -1) && (tripleA[sortMask[0]] < tripleB[sortMask[0]])) {
+				return true;
+			}
+			
+			if ((sortMask[1] != -1) && (tripleA[sortMask[0]] == tripleB[sortMask[0]]) && (tripleA[sortMask[1]] < tripleB[sortMask[1]])) {
+				return true;
+			}
+			
+			if ((sortMask[2] != -1) && (tripleA[sortMask[0]] == tripleB[sortMask[0]]) && (tripleA[sortMask[1]] == tripleB[sortMask[1]]) && (tripleA[sortMask[2]] < tripleB[sortMask[2]])) {
+				return true;
+			}
+			
+			return false;
+		}
 };
 
 
+
+class TripleSorter2
+{
+	private:
+		int maskA[3];
+		int maskB[3];
+	public:
+		TripleSorter2(JoinMask innerMask[3], JoinMask outerMask[3]) {
+			this->maskA[0] = static_cast<int> (innerMask[0]);
+			this->maskA[1] = static_cast<int> (innerMask[1]);
+			this->maskA[2] = static_cast<int> (innerMask[2]);
+			
+			maskB[0] = static_cast<int> (outerMask[0]);
+			maskB[1] = static_cast<int> (outerMask[1]);
+			maskB[2] = static_cast<int> (outerMask[2]);			
+		}
+		
+		MGPU_DEVICE bool operator() (tripleContainer<int> a, tripleContainer<int> b) {			
+			int tripleA[3] = {a.subject, a.predicate, a.object};
+			int tripleB[3] = {b.subject, b.predicate, b.object};
+			
+			if ((maskA[1] != -1) && (tripleA[maskA[0]] < tripleB[maskB[0]])) {
+				return true;
+			}
+		
+			if ((maskA[1] != -1) && (tripleA[maskA[0]] == tripleB[maskB[0]]) && (tripleA[1] < tripleB[1])) {
+				return true;
+			}
+			
+			if ((maskA[2] != -1) && (tripleA[0] == tripleB[0]) && (tripleA[1] == tripleB[1]) && (tripleA[2] < tripleB[2])) {
+				return true;
+			}
+
+			
+					
+			return false;
+		}
+};
+
+
+
 template<typename element_t>
-__global__ void indexCopy(tripleContainer<element_t>* src, tripleContainer<element_t>* dest, int2* srcIndex, const bool x) 
+__global__ void indexCopy(tripleContainer<element_t>* src, tripleContainer<element_t>* dest, int2* srcIndex, const bool x, int maxSize) 
 {
 	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
 	int currentIndex = 0;
+	
+	if (destIndex >= maxSize) {
+		return;
+	}
 	
 	if (x) {
 		currentIndex = srcIndex[destIndex].x;
@@ -185,33 +230,89 @@ __global__ void indexCopy(tripleContainer<element_t>* src, tripleContainer<eleme
 	dest[currentIndex] = src[currentIndex];
 }
 
+__global__ void shrink(int2* srcIndex, int* vectorSize, int maxSize) {
+	
+	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	if (destIndex >= maxSize) {
+		return;
+	}
+	
+
+	printf("index %i ", destIndex);
+	printf("first %i ",srcIndex[destIndex].x);
+	printf("second %i \n",srcIndex[destIndex + 1].x);
+	
+	if (srcIndex[destIndex].x != srcIndex[destIndex + 1].x ) {
+		printf("aumento \n");
+		*vectorSize += 1;
+	} 
+
+}
+
+__global__ void dummy(int2* srcIndex, int* vectorSize, int maxSize) {
+	printf("dummy \n");
+	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
+	printf("mi sa che non vado \n");
+}
 
 template<typename element_t>
-std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_t>* innerTable, int innerSize, tripleContainer<element_t>* outerTable, int outerSize, int joinMask[3])
+std::vector<mem_t<tripleContainer<element_t>>*> rdfJoin(tripleContainer<element_t>* innerTable, int innerSize, tripleContainer<element_t>* outerTable, int outerSize, JoinMask innerMask[3], JoinMask outerMask[3])
 {
 	standard_context_t context;
-	TripleComparator<element_t>* comparator = new TripleComparator<element_t>(joinMask);
 	std::vector<mem_t<tripleContainer<element_t>>*> finalResults;
-
+	
+	TripleSorter* innerSorter = new TripleSorter(innerMask);
+	TripleSorter* outerSorter = new TripleSorter(outerMask);
+	
 	//Sort the two input array
-	mergesort(innerTable, innerSize , *comparator, context);
-	mergesort(outerTable, outerSize , *comparator, context);
+	mergesort(innerTable, innerSize , *innerSorter, context);
+	mergesort(outerTable, outerSize , *outerSorter, context);
 	
-	mem_t<int2> joinResult = inner_join(innerTable, innerSize, outerTable, outerSize, *comparator, context);	
+	TripleSorter2* comparator = new TripleSorter2(innerMask, outerMask);
+	mem_t<int2> joinResult = inner_join(innerTable, innerSize, outerTable, outerSize, *comparator, context);
+	
+	
+	std::vector<int2> prova = from_mem(joinResult);
+	
+	for (int i = 0; i << prova.size(); i++) {
+	//	std::cout << prova[i].subject << " " << prova[i].predicate << " " << prova[i].object << std::endl;
+		std::cout << prova[i].x << std::endl;
 
+	}
+	
+	std::cout << "size is " << prova.size() << std::endl;
+		
+/*
+	std::vector<int2> final = from_mem(joinResult);
+	
+	for (int i = 0; i < 100; i ++) {
+		std::cout << "index is x:"<< final[i].x << std::endl; 
+		std::cout << "index is y:"<< final[i].y << std::endl; 
+	}
 
-	mem_t<tripleContainer<element_t>>* innerResults = new mem_t<tripleContainer<element_t>>(innerSize, context);
+	
+	mem_t<int> vectorSize(1, context);
+	int* zeroValue = (int*) malloc(sizeof(int));
+	*zeroValue = 0;
+	cudaMemcpy(vectorSize.data(), zeroValue, sizeof(int), cudaMemcpyHostToDevice);
+	shrink<<<1, 10 >>>(joinResult.data(), vectorSize.data(), joinResult.size());
+	std::vector<int> size = from_mem(vectorSize);
+	cudaMemcpy(zeroValue, vectorSize.data(), sizeof(int), cudaMemcpyDeviceToHost);
+	std::cout << *zeroValue << std::endl;
+	
+//	mem_t<tripleContainer<element_t>>* innerResults = new mem_t<tripleContainer<element_t>>(innerSize, context);
         mem_t<tripleContainer<element_t>>* outerResults = 0;
-        
-	int gridSize = 64;
-	int threadSize = (joinResult.size() / gridSize) + 1
-	indexCopy<<<gridSize,joinResult.size()>>>(innerTable, innerResults->data(), joinResult.data(), true);
+	mem_t<tripleContainer<element_t>>* innerResults = 0;
+	/*
 	
+	//TODO divedere in numero diblocchi/thread corretto  
+	indexCopy<<<1, blockSize>>>(innerTable, innerResults->data(), joinResult.data(), true, innerSize);
+
 
 	finalResults.push_back(innerResults);
 	finalResults.push_back(outerResults);
 
-
+*/
 	return finalResults;
 }
 
@@ -245,13 +346,15 @@ class JoinOperation : public RelationalOperation<element_t>
 	private:
 		mem_t<tripleContainer <element_t>>** innerTable;
 		mem_t<tripleContainer <element_t>>** outerTable;
-		int mask[3];
+		JoinMask innerMask[3];
+		JoinMask outerMask[3];
 
 	public:
-		JoinOperation(mem_t<tripleContainer <element_t>>** innerTable, mem_t<tripleContainer <element_t>>** outerTable, int mask[3]) {
+		JoinOperation(mem_t<tripleContainer <element_t>>** innerTable, mem_t<tripleContainer <element_t>>** outerTable, JoinMask innerMask[3], JoinMask outerMask[3]) {
 			this->innerTable = innerTable;
 			this->outerTable = outerTable;
-			std::copy(mask, mask + 3, this->mask);
+			std::copy(innerMask, innerMask + 3, this->innerMask);
+			std::copy(outerMask, outerMask + 3, this->outerMask);
 		};
 			
 		mem_t<tripleContainer <element_t>>** getInnerTable() {
@@ -262,8 +365,12 @@ class JoinOperation : public RelationalOperation<element_t>
 			return this->outerTable;
 		};
 		
-		int* getMask() {
-			return this->mask;
+		JoinMask* getInnerMask() {
+			return this->innerMask;
+		};
+		
+		JoinMask* getOuterMask() {
+			return this->outerMask;
 		};		
 };
 
@@ -308,11 +415,12 @@ void queryManager(std::vector<SelectOperation<element_t>*> selectOp, std::vector
 		selectOp[i]->setResult(selectResults[i]);
 	}
 	
+	
 	for (int i = 0; i < joinOp.size(); i++) {
 		mem_t<tripleContainer<element_t>>* innerTable = *joinOp[i]->getInnerTable();
 		mem_t<tripleContainer<element_t>>* outerTable = *joinOp[i]->getOuterTable();
-		std::vector<mem_t<tripleContainer<element_t>>*>  joinResult = rdfJoin(innerTable->data(), innerTable->size(), outerTable->data(), outerTable->size(), joinOp[i]->getMask());
-		joinOp[i]->setResult(joinResult[0]);
+		std::vector<mem_t<tripleContainer<element_t>>*>  joinResult = rdfJoin(innerTable->data(), innerTable->size(), outerTable->data(), outerTable->size(), joinOp[i]->getInnerMask(), joinOp[i]->getOuterMask());
+	//	joinOp[i]->setResult(joinResult[0]);
 	}
 	
 }
@@ -327,35 +435,37 @@ int main(int argc, char** argv) {
 		
 		cudaDeviceReset();
 		standard_context_t context;
+		ifstream rdfStoreFile ("../rdfStore/rdfTimeInt.txt");
+		string strInput;
 		
-                const int FILE_LENGHT = 299829;
+
+       		
+       		const int FILE_LENGHT = 302924;
               	           
-                size_t rdfSize = FILE_LENGHT * sizeof(tripleContainer<tripleElement>);
+                size_t rdfSize = FILE_LENGHT  * sizeof(tripleContainer<tripleElement>);
                 tripleContainer<tripleElement>* h_rdfStore = (tripleContainer<tripleElement>*) malloc(rdfSize);
 
                 //read store from rdfStore
-                ifstream rdfStoreFile ("../rdfStore/rdf2Int.txt");
+ 
 
-                string strInput;
-
-		
-                for (int i = 0; i < FILE_LENGHT; i++) {
-                        getline(rdfStoreFile,strInput);
-
-                        std::vector<string> triple ;
+                for (int i = 0; i <FILE_LENGHT ; i++) {
+                	getline(rdfStoreFile,strInput);
+                        std::vector<string> triple;
                         separateWords(strInput, triple, ' ');
-
-                        h_rdfStore[i].subject = atoi(triple[0].c_str());
+			
+           		h_rdfStore[i].subject = atoi(triple[0].c_str());
                         h_rdfStore[i].predicate = atoi(triple[1].c_str());
                         h_rdfStore[i].object = atoi(triple[2].c_str());
+
                 }
 
-                
+     
+         
                 rdfStoreFile.close();
 
 		std::vector<float> timeVector;                
 
-                int N_CYCLE = 100;
+                int N_CYCLE = 1;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 
@@ -363,13 +473,13 @@ int main(int argc, char** argv) {
 			tripleContainer<tripleElement>* d_storeVector;
 			cudaMalloc(&d_storeVector, rdfSize);
 			cudaMemcpy(d_storeVector, h_rdfStore, rdfSize, cudaMemcpyHostToDevice);	
-	
+			
+	//		String queryString = "SELECT ?p ?w WHERE {  <http://example.org/int/1342> ?w  ?p. <http://example.org/int/1174> ?p ?w} ";
 			
 		        //set Queries (select that will be joined)
-		        tripleContainer<tripleElement> h_queryVector1 = {0, 1, 2}; 
-		        tripleContainer<tripleElement> h_queryVector2 = {0, 2 , 2};
-		        
-		                     
+		        tripleContainer<tripleElement> h_queryVector1 = {1342, 1, 1}; 
+		        tripleContainer<tripleElement> h_queryVector2 = {1174, 2 , 1};
+		                
 		        mem_t<tripleContainer<tripleElement>> d_queryVector1(1, context);
 			cudaMemcpy(d_queryVector1.data(), &h_queryVector1, sizeof(tripleContainer<tripleElement>), cudaMemcpyHostToDevice);
 		
@@ -397,15 +507,21 @@ int main(int argc, char** argv) {
 			compareMask.push_back(selectMask2);
 		
 			//set Join mask
-			int joinMask[3];
-			joinMask[0] = 1;
-			joinMask[1] = 0;
-			joinMask[2] = 0;
+			JoinMask innerMask[3];
+			innerMask[0] = JoinMask::PRE;
+			innerMask[1] = JoinMask::OBJ;
+			innerMask[2] = JoinMask::NJ;
+			
+			JoinMask outerMask[3];
+			outerMask[0] = JoinMask::OBJ;
+			outerMask[1] = JoinMask::PRE;
+			outerMask[2] = JoinMask::NJ;
+
 			
 			SelectOperation<tripleElement>  selectOp1(&d_queryVector1, selectMask1);
 			SelectOperation<tripleElement>  selectOp2(&d_queryVector2, selectMask2);
 		
-			JoinOperation<tripleElement>  joinOp(selectOp1.getResultAddress(), selectOp2.getResultAddress(), joinMask);
+			JoinOperation<tripleElement>  joinOp(selectOp1.getResultAddress(), selectOp2.getResultAddress(), innerMask, outerMask);
 		
 			std::vector<SelectOperation<tripleElement>*> selectOperations;
 			std::vector<JoinOperation<tripleElement>*> joinOperations;
@@ -419,9 +535,10 @@ int main(int argc, char** argv) {
 		
 			queryManager<tripleElement>(selectOperations, joinOperations, d_storeVector, FILE_LENGHT);
 			
+			
 			std::vector<tripleContainer<tripleElement>> selectResults = from_mem(*selectOp1.getResult());
 			std::vector<tripleContainer<tripleElement>> selectResults2 = from_mem(*selectOp2.getResult());
-			std::vector<tripleContainer<tripleElement>> finalResults = from_mem(*joinOp.getResult());
+		/*	std::vector<tripleContainer<tripleElement>> finalResults = from_mem(*joinOp.getResult());*/
 			cudaDeviceSynchronize();
 			
 		
@@ -441,33 +558,30 @@ int main(int argc, char** argv) {
 			cout << "first select result" << endl;
 			
 			cout << selectResults.size() << endl;
-		/*	for (int i = 0; i < selectResults.size(); i++) {
+			for (int i = 0; i < selectResults.size(); i++) {
 				cout << selectResults[i].subject << " " << selectResults[i].predicate << " "  << selectResults[i].object << endl; 
-			}*/
+			}
 		
 			cout << "second select result" << endl;
 	
 			cout << selectResults2.size() << endl;
-		/*	for (int i = 0; i < selectResults2.size(); i++) {
+			for (int i = 0; i < selectResults2.size(); i++) {
 				cout << selectResults2[i].subject << " " << selectResults2[i].predicate << " "  << selectResults2[i].object << endl; 
-			}*/
+			}
 		
 			cout << "final result" << endl;
 			
-			cout << finalResults.size() << endl;
-			for (int i = 0; i < finalResults.size(); i++) {
+		/*	cout << finalResults.size() << endl;
+		/*	for (int i = 0; i < finalResults.size(); i++) {
 				cout << finalResults[i].subject << " " << finalResults[i].predicate << " "  << finalResults[i].object << endl; 
-			} 
+			} */
 			
-			
-			
+		/*				
 			cudaFree((*joinOp.getResult()).data());
 			cudaFree((*selectOp1.getResult()).data());
 			cudaFree((*selectOp2.getResult()).data());
-			cudaFree(d_storeVector);
-			
-			
-			
+			cudaFree(d_storeVector);*/
+	
 		}
 		
 		int vecSize = timeVector.size();
@@ -487,7 +601,6 @@ int main(int argc, char** argv) {
 		cout << "variance cuda time " << variance << endl;
 		
 		return 0;
-
 
 }
 

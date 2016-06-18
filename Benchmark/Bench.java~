@@ -25,7 +25,7 @@ import org.eclipse.rdf4j.sail.memory.MemoryStore;
  * Hello world!
  *
  */
-public class App 
+public class Bench 
 {
     public static void main( String[] args ) throws IOException
     {
@@ -33,31 +33,42 @@ public class App
       	try {
       		//Open rdf repository, file and connection to repository
       		Repository repo = new SailRepository(new MemoryStore());
-	        File file =  new File("../rdfStore/rdf3.txt");
+	        File file =  new File("../rdfStore/rdfTimeStr.txt");
 	        String baseURI = "http://example.org/example/local";
 		repo.initialize();
 		RepositoryConnection con = repo.getConnection();
 
 		List timeVec = new LinkedList();
-		int N_CYCLES = 50;
+		int N_CYCLES = 1;
 				
 		con.add(file, baseURI, RDFFormat.NTRIPLES);
-					
+		List<BindingSet> resultList = null;		
 		for (int i =0; i <N_CYCLES;  i ++) {
 			double startTime = System.nanoTime();
 			
-			String queryString = "SELECT ?p ?y WHERE { <http://example.org/int/0> ?p ?y . <http://example.org/int/0> ?p ?y } ";
+		//	String queryString = "SELECT ?p ?w WHERE {   <http://example.org/int/0> ?w  ?p. <http://example.org/int/0> ?p  <http://example.org/int/1>} ";
+		//	String queryString = "SELECT ?p ?w WHERE {  <http://example.org/int/1342> ?w  ?p. <http://example.org/int/1174> ?p ?w} ";
+		//	String queryString = "SELECT ?p ?w WHERE {  <http://example.org/int/1342> ?w  ?p } ";
+			String queryString = "SELECT ?p ?w WHERE { <http://example.org/int/1174> ?p ?w} ";
 			TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 		    	TupleQueryResult result = tupleQuery.evaluate();
 		    	
 		    	//Force evaluation or results (as suggested by sesame)
-		    	List<BindingSet> resultList;
+
 		    	resultList = QueryResults.asList(result);
 		    	
 		    	double time = System.nanoTime() - startTime;
 		    	double duration = new Double(time / (double) 1000000);
 			timeVec.add(duration);
 		}
+		
+
+		
+		for (BindingSet result : resultList) {
+			System.out.println(result.getBinding("p").getValue().stringValue());
+		}
+		
+		System.out.println(resultList.size());
 		
 		
 		double mean = 0;

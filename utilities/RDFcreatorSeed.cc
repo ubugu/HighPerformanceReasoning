@@ -9,7 +9,7 @@ int main(int argc,char *argv[])
 	//THE FORMAT IS: NUMBER OF TRIPLE, MAX VALUE, SEEDNUMBER, SEEDVALUE, PATH,
 
 	if (argc < 6) {
-		cout << "Wrong number of input elements. THE FORMAT IS: NUMBER OF TRIPLE, MAX VALUE, PATH." << endl;
+		cout << "Wrong number of input elements. THE FORMAT IS: NUMBER OF TRIPLE, MAX VALUE, SEEDNUMBER, SEEDVALUE PATH." << endl;
 		return -1; 
 	}
 	

@@ -1,3 +1,9 @@
 TODO
 
--scrivere per capire cosa fare della struct
+-Fare prova con algoritmo alternativo
+
+-Riscrivere bene metodo query manager
+
+-Gestire mergesort e join con elementi che richiedono molta memoria shared
+
+-Usare in modo consono thread e block nella funzione di copia del join
