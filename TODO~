@@ -7,3 +7,6 @@ TODO
 -Gestire mergesort e join con elementi che richiedono molta memoria shared
 
 -Usare in modo consono thread e block nella funzione di copia del join
+
+-Eliminare switch 
+

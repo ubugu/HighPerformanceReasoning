@@ -47,9 +47,12 @@ public class Bench
 			double startTime = System.nanoTime();
 			
 		//	String queryString = "SELECT ?p ?w WHERE {   <http://example.org/int/0> ?w  ?p. <http://example.org/int/0> ?p  <http://example.org/int/1>} ";
-		//	String queryString = "SELECT ?p ?w WHERE {  <http://example.org/int/1342> ?w  ?p. <http://example.org/int/1174> ?p ?w} ";
-		//	String queryString = "SELECT ?p ?w WHERE {  <http://example.org/int/1342> ?w  ?p } ";
-			String queryString = "SELECT ?p ?w WHERE { <http://example.org/int/1174> ?p ?w} ";
+		
+		//	String queryString = "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
+		//	String queryString = "SELECT ?p WHERE {  <http://example.org/int/0> ?p  ?o} ";
+		//	String queryString = "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>} ";
+		
+			String queryString = "SELECT ?p WHERE { <http://example.org/int/666> ?p ?o.  <http://example.org/int/667> ?p  ?z} ";
 			TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 		    	TupleQueryResult result = tupleQuery.evaluate();
 		    	

@@ -8,5 +8,7 @@ TODO
 
 -Usare in modo consono thread e block nella funzione di copia del join
 
--Eliminare switch 
+-Eliminare switch
+
+-Contattare moderngpu per fixare errori join (scambio inner/outer e join su elementi differenti)
 
