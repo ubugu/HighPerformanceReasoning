@@ -25,35 +25,39 @@ import org.eclipse.rdf4j.sail.memory.MemoryStore;
  * Hello world!
  *
  */
-public class Bench 
+public class BenchManual 
 {
     public static void main( String[] args ) throws IOException
     {
         
       	try {
       		//Open rdf repository, file and connection to repository
-      		Repository repo = new SailRepository(new MemoryStore());
-	        File file =  new File("../rdfStore/rdfTimeStr.txt");
-	        String baseURI = "http://example.org/example/local";
-		repo.initialize();
-		RepositoryConnection con = repo.getConnection();
-
+      		
 		List timeVec = new LinkedList();
-		int N_CYCLES = 10;
-				
-		con.add(file, baseURI, RDFFormat.NTRIPLES);
+		int N_CYCLES = 1;
+		File file =  new File("../rdfStore/rdfTimeStr.txt");
+	       		
+	       				
 		List<BindingSet> resultList = null;		
-		for (int i =0; i <N_CYCLES;  i ++) {
-			double startTime = System.nanoTime();
+		Repository repo = new SailRepository(new MemoryStore());
+	       	String baseURI = "http://example.org/example/local";
+		repo.initialize();
 			
-		//	String queryString = "SELECT ?p ?w WHERE {   <http://example.org/int/0> ?w  ?p. <http://example.org/int/0> ?p  <http://example.org/int/1>} ";
 		
+		RepositoryConnection con = repo.getConnection();
+		con.add(file, baseURI, RDFFormat.NTRIPLES);
+		for (int i =0; i <N_CYCLES;  i ++) {
+			
+		
+			double startTime = System.nanoTime();
+		//	String queryString = "SELECT ?p ?w WHERE {   <http://example.org/int/0> ?w  ?p. <http://example.org/int/0> ?p  <http://example.org/int/1>} ";
+
 			String queryString = "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
+			
 			TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 		    	TupleQueryResult result = tupleQuery.evaluate();
 		    	
 		    	//Force evaluation or results (as suggested by sesame)
-
 		    	resultList = QueryResults.asList(result);
 		    	
 		    	double time = System.nanoTime() - startTime;
@@ -62,29 +66,29 @@ public class Bench
 		}
 		
 
-		
+		/*
 		for (BindingSet result : resultList) {
 			System.out.println(result);
 		}
 		
 		System.out.println(resultList.size());
 		
-		
 		double mean = 0;
 		double variance = 0;
+		*/
 		
 		for (Object value : timeVec) {
 			Double value2 = (Double) value;
 			System.out.println(value2.doubleValue());
-			mean += value2.doubleValue();
-			variance += value2.doubleValue() * value2.doubleValue();
+			/*mean += value2.doubleValue();
+			variance += value2.doubleValue() * value2.doubleValue();*/
 		}
-		mean = mean / (double) timeVec.size();
+		/*mean = mean / (double) timeVec.size();
 		variance = variance / (double) timeVec.size();
 		variance = variance - mean * mean;
 		
 		System.out.println("Variance is " + variance);
-		System.out.println("Mean is " + mean);
+		System.out.println("Mean is " + mean);*/
 	
 	} catch (Exception e) {
 
