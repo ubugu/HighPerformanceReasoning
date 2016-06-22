@@ -79,7 +79,7 @@ public class BenchManual
 		
 		for (Object value : timeVec) {
 			Double value2 = (Double) value;
-			System.out.println(value2.doubleValue());
+			System.out.print(value2.doubleValue() + "-");
 			/*mean += value2.doubleValue();
 			variance += value2.doubleValue() * value2.doubleValue();*/
 		}
