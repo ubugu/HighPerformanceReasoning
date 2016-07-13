@@ -1,0 +1,700 @@
+first Select Size 380
+second Select Size 387
+join Size 173
+Total time: 843.72
+Cuda time: 4.886
+Execution time: 3.131
+
+first Select Size 384
+second Select Size 367
+join Size 187
+Total time: 848.628
+Cuda time: 4.542
+Execution time: 2.875
+
+first Select Size 383
+second Select Size 379
+join Size 179
+Total time: 853.484
+Cuda time: 4.508
+Execution time: 2.869
+
+first Select Size 374
+second Select Size 357
+join Size 158
+Total time: 858.34
+Cuda time: 4.56
+Execution time: 2.951
+
+first Select Size 334
+second Select Size 370
+join Size 148
+Total time: 863.106
+Cuda time: 4.47
+Execution time: 2.837
+
+first Select Size 347
+second Select Size 380
+join Size 166
+Total time: 867.859
+Cuda time: 4.457
+Execution time: 2.849
+
+first Select Size 356
+second Select Size 348
+join Size 151
+Total time: 872.642
+Cuda time: 4.491
+Execution time: 2.89
+
+first Select Size 422
+second Select Size 357
+join Size 192
+Total time: 877.496
+Cuda time: 4.533
+Execution time: 2.908
+
+first Select Size 379
+second Select Size 396
+join Size 216
+Total time: 882.267
+Cuda time: 4.476
+Execution time: 2.864
+
+first Select Size 371
+second Select Size 374
+join Size 164
+Total time: 887.059
+Cuda time: 4.497
+Execution time: 2.889
+
+first Select Size 377
+second Select Size 415
+join Size 184
+Total time: 891.86
+Cuda time: 4.477
+Execution time: 2.855
+
+first Select Size 383
+second Select Size 367
+join Size 176
+Total time: 896.633
+Cuda time: 4.479
+Execution time: 2.867
+
+first Select Size 419
+second Select Size 363
+join Size 186
+Total time: 901.54
+Cuda time: 4.556
+Execution time: 2.919
+
+first Select Size 381
+second Select Size 395
+join Size 191
+Total time: 906.304
+Cuda time: 4.47
+Execution time: 2.862
+
+first Select Size 412
+second Select Size 392
+join Size 210
+Total time: 911.037
+Cuda time: 4.444
+Execution time: 2.843
+
+first Select Size 386
+second Select Size 363
+join Size 168
+Total time: 915.838
+Cuda time: 4.509
+Execution time: 2.911
+
+first Select Size 393
+second Select Size 353
+join Size 176
+Total time: 920.571
+Cuda time: 4.441
+Execution time: 2.83
+
+first Select Size 418
+second Select Size 364
+join Size 166
+Total time: 925.43
+Cuda time: 4.534
+Execution time: 2.881
+
+first Select Size 362
+second Select Size 380
+join Size 164
+Total time: 930.232
+Cuda time: 4.502
+Execution time: 2.895
+
+first Select Size 369
+second Select Size 360
+join Size 175
+Total time: 934.985
+Cuda time: 4.462
+Execution time: 2.86
+
+first Select Size 390
+second Select Size 392
+join Size 165
+Total time: 939.882
+Cuda time: 4.603
+Execution time: 3
+
+first Select Size 393
+second Select Size 336
+join Size 165
+Total time: 944.699
+Cuda time: 4.481
+Execution time: 2.854
+
+first Select Size 390
+second Select Size 397
+join Size 166
+Total time: 949.552
+Cuda time: 4.491
+Execution time: 2.865
+
+first Select Size 393
+second Select Size 378
+join Size 182
+Total time: 954.354
+Cuda time: 4.508
+Execution time: 2.907
+
+first Select Size 347
+second Select Size 406
+join Size 164
+Total time: 959.154
+Cuda time: 4.504
+Execution time: 2.879
+
+first Select Size 367
+second Select Size 393
+join Size 195
+Total time: 963.87
+Cuda time: 4.424
+Execution time: 2.818
+
+first Select Size 387
+second Select Size 375
+join Size 165
+Total time: 968.62
+Cuda time: 4.459
+Execution time: 2.858
+
+first Select Size 397
+second Select Size 382
+join Size 196
+Total time: 973.451
+Cuda time: 4.54
+Execution time: 2.91
+
+first Select Size 330
+second Select Size 374
+join Size 164
+Total time: 978.243
+Cuda time: 4.498
+Execution time: 2.898
+
+first Select Size 340
+second Select Size 392
+join Size 190
+Total time: 982.997
+Cuda time: 4.453
+Execution time: 2.827
+
+first Select Size 368
+second Select Size 345
+join Size 148
+Total time: 987.802
+Cuda time: 4.486
+Execution time: 2.845
+
+first Select Size 408
+second Select Size 418
+join Size 207
+Total time: 992.691
+Cuda time: 4.567
+Execution time: 2.955
+
+first Select Size 369
+second Select Size 376
+join Size 180
+Total time: 997.593
+Cuda time: 4.579
+Execution time: 2.949
+
+first Select Size 339
+second Select Size 373
+join Size 169
+Total time: 1002.27
+Cuda time: 4.378
+Execution time: 2.774
+
+first Select Size 371
+second Select Size 384
+join Size 180
+Total time: 1006.99
+Cuda time: 4.431
+Execution time: 2.83
+
+first Select Size 366
+second Select Size 353
+join Size 164
+Total time: 1011.76
+Cuda time: 4.459
+Execution time: 2.862
+
+first Select Size 378
+second Select Size 350
+join Size 168
+Total time: 1016.5
+Cuda time: 4.452
+Execution time: 2.851
+
+first Select Size 372
+second Select Size 377
+join Size 159
+Total time: 1021.32
+Cuda time: 4.53
+Execution time: 2.884
+
+first Select Size 367
+second Select Size 374
+join Size 169
+Total time: 1026.12
+Cuda time: 4.486
+Execution time: 2.858
+
+first Select Size 382
+second Select Size 353
+join Size 186
+Total time: 1030.91
+Cuda time: 4.493
+Execution time: 2.888
+
+first Select Size 404
+second Select Size 393
+join Size 219
+Total time: 1035.79
+Cuda time: 4.587
+Execution time: 2.984
+
+first Select Size 362
+second Select Size 349
+join Size 163
+Total time: 1040.51
+Cuda time: 4.426
+Execution time: 2.817
+
+first Select Size 437
+second Select Size 420
+join Size 245
+Total time: 1045.34
+Cuda time: 4.545
+Execution time: 2.904
+
+first Select Size 373
+second Select Size 359
+join Size 163
+Total time: 1050.09
+Cuda time: 4.432
+Execution time: 2.814
+
+first Select Size 374
+second Select Size 373
+join Size 172
+Total time: 1054.81
+Cuda time: 4.433
+Execution time: 2.836
+
+first Select Size 390
+second Select Size 384
+join Size 206
+Total time: 1059.64
+Cuda time: 4.547
+Execution time: 2.947
+
+first Select Size 359
+second Select Size 354
+join Size 170
+Total time: 1064.36
+Cuda time: 4.437
+Execution time: 2.82
+
+first Select Size 399
+second Select Size 372
+join Size 191
+Total time: 1069.15
+Cuda time: 4.503
+Execution time: 2.869
+
+first Select Size 378
+second Select Size 359
+join Size 162
+Total time: 1074.03
+Cuda time: 4.56
+Execution time: 2.942
+
+first Select Size 374
+second Select Size 374
+join Size 165
+Total time: 1078.81
+Cuda time: 4.492
+Execution time: 2.875
+
+first Select Size 376
+second Select Size 369
+join Size 180
+Total time: 1083.57
+Cuda time: 4.473
+Execution time: 2.868
+
+first Select Size 399
+second Select Size 369
+join Size 171
+Total time: 1088.28
+Cuda time: 4.422
+Execution time: 2.82
+
+first Select Size 370
+second Select Size 371
+join Size 200
+Total time: 1093.01
+Cuda time: 4.437
+Execution time: 2.835
+
+first Select Size 376
+second Select Size 335
+join Size 154
+Total time: 1097.79
+Cuda time: 4.462
+Execution time: 2.844
+
+first Select Size 405
+second Select Size 372
+join Size 207
+Total time: 1102.59
+Cuda time: 4.506
+Execution time: 2.886
+
+first Select Size 396
+second Select Size 397
+join Size 200
+Total time: 1107.37
+Cuda time: 4.491
+Execution time: 2.887
+
+first Select Size 390
+second Select Size 410
+join Size 208
+Total time: 1112.14
+Cuda time: 4.474
+Execution time: 2.872
+
+first Select Size 365
+second Select Size 389
+join Size 199
+Total time: 1116.88
+Cuda time: 4.456
+Execution time: 2.836
+
+first Select Size 355
+second Select Size 393
+join Size 175
+Total time: 1121.68
+Cuda time: 4.448
+Execution time: 2.824
+
+first Select Size 364
+second Select Size 386
+join Size 177
+Total time: 1126.42
+Cuda time: 4.462
+Execution time: 2.865
+
+first Select Size 340
+second Select Size 351
+join Size 151
+Total time: 1131.12
+Cuda time: 4.404
+Execution time: 2.803
+
+first Select Size 346
+second Select Size 389
+join Size 168
+Total time: 1135.9
+Cuda time: 4.473
+Execution time: 2.866
+
+first Select Size 355
+second Select Size 366
+join Size 150
+Total time: 1140.67
+Cuda time: 4.487
+Execution time: 2.865
+
+first Select Size 365
+second Select Size 381
+join Size 164
+Total time: 1145.49
+Cuda time: 4.504
+Execution time: 2.876
+
+first Select Size 384
+second Select Size 333
+join Size 156
+Total time: 1150.21
+Cuda time: 4.425
+Execution time: 2.823
+
+first Select Size 351
+second Select Size 362
+join Size 157
+Total time: 1154.99
+Cuda time: 4.491
+Execution time: 2.881
+
+first Select Size 381
+second Select Size 363
+join Size 170
+Total time: 1159.76
+Cuda time: 4.485
+Execution time: 2.878
+
+first Select Size 382
+second Select Size 379
+join Size 187
+Total time: 1164.45
+Cuda time: 4.405
+Execution time: 2.801
+
+first Select Size 368
+second Select Size 368
+join Size 184
+Total time: 1169.2
+Cuda time: 4.458
+Execution time: 2.841
+
+first Select Size 352
+second Select Size 391
+join Size 171
+Total time: 1174.03
+Cuda time: 4.523
+Execution time: 2.907
+
+first Select Size 359
+second Select Size 368
+join Size 161
+Total time: 1178.9
+Cuda time: 4.569
+Execution time: 2.963
+
+first Select Size 381
+second Select Size 358
+join Size 183
+Total time: 1183.71
+Cuda time: 4.518
+Execution time: 2.909
+
+first Select Size 372
+second Select Size 388
+join Size 172
+Total time: 1188.43
+Cuda time: 4.434
+Execution time: 2.828
+
+first Select Size 369
+second Select Size 378
+join Size 179
+Total time: 1193.23
+Cuda time: 4.515
+Execution time: 2.89
+
+first Select Size 391
+second Select Size 359
+join Size 172
+Total time: 1198.07
+Cuda time: 4.513
+Execution time: 2.877
+
+first Select Size 343
+second Select Size 378
+join Size 189
+Total time: 1202.8
+Cuda time: 4.433
+Execution time: 2.83
+
+first Select Size 348
+second Select Size 383
+join Size 163
+Total time: 1207.56
+Cuda time: 4.478
+Execution time: 2.878
+
+first Select Size 393
+second Select Size 383
+join Size 183
+Total time: 1212.25
+Cuda time: 4.403
+Execution time: 2.803
+
+first Select Size 398
+second Select Size 376
+join Size 189
+Total time: 1217.03
+Cuda time: 4.493
+Execution time: 2.895
+
+first Select Size 362
+second Select Size 383
+join Size 180
+Total time: 1221.86
+Cuda time: 4.516
+Execution time: 2.882
+
+first Select Size 370
+second Select Size 389
+join Size 159
+Total time: 1226.65
+Cuda time: 4.495
+Execution time: 2.89
+
+first Select Size 366
+second Select Size 394
+join Size 154
+Total time: 1231.52
+Cuda time: 4.578
+Execution time: 2.975
+
+first Select Size 345
+second Select Size 399
+join Size 166
+Total time: 1236.29
+Cuda time: 4.47998
+Execution time: 2.854
+
+first Select Size 359
+second Select Size 402
+join Size 185
+Total time: 1241.05
+Cuda time: 4.471
+Execution time: 2.86
+
+first Select Size 357
+second Select Size 400
+join Size 180
+Total time: 1245.83
+Cuda time: 4.466
+Execution time: 2.844
+
+first Select Size 365
+second Select Size 425
+join Size 192
+Total time: 1250.55
+Cuda time: 4.428
+Execution time: 2.83
+
+first Select Size 365
+second Select Size 383
+join Size 171
+Total time: 1255.32
+Cuda time: 4.494
+Execution time: 2.898
+
+first Select Size 341
+second Select Size 364
+join Size 142
+Total time: 1260.05
+Cuda time: 4.438
+Execution time: 2.813
+
+first Select Size 411
+second Select Size 347
+join Size 194
+Total time: 1264.76
+Cuda time: 4.415
+Execution time: 2.806
+
+first Select Size 368
+second Select Size 350
+join Size 159
+Total time: 1269.63
+Cuda time: 4.563
+Execution time: 2.962
+
+first Select Size 344
+second Select Size 376
+join Size 160
+Total time: 1274.51
+Cuda time: 4.582
+Execution time: 2.947
+
+first Select Size 378
+second Select Size 356
+join Size 166
+Total time: 1279.26
+Cuda time: 4.458
+Execution time: 2.852
+
+first Select Size 364
+second Select Size 412
+join Size 184
+Total time: 1283.99
+Cuda time: 4.441
+Execution time: 2.834
+
+first Select Size 345
+second Select Size 405
+join Size 188
+Total time: 1288.7
+Cuda time: 4.426
+Execution time: 2.821
+
+first Select Size 392
+second Select Size 351
+join Size 182
+Total time: 1293.53
+Cuda time: 4.526
+Execution time: 2.92
+
+first Select Size 367
+second Select Size 382
+join Size 180
+Total time: 1298.33
+Cuda time: 4.508
+Execution time: 2.883
+
+first Select Size 361
+second Select Size 324
+join Size 164
+Total time: 1303.01
+Cuda time: 4.383
+Execution time: 2.778
+
+first Select Size 385
+second Select Size 362
+join Size 186
+Total time: 1307.76
+Cuda time: 4.466
+Execution time: 2.864
+
+first Select Size 360
+second Select Size 354
+join Size 171
+Total time: 1312.51
+Cuda time: 4.452
+Execution time: 2.837
+
+first Select Size 388
+second Select Size 365
+join Size 179
+Total time: 1317.24
+Cuda time: 4.443
+Execution time: 2.813
+

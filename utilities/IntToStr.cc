@@ -35,6 +35,8 @@ int main(int argc,char *argv[])
 	//Format is: <http://example.org/int/553>	
 
 	string strInput;
+	srand (time(NULL));
+	int secret = rand() % 100 + 1;
 	while (getline(rdfStore,strInput)) {
 		vector<string> triple;
         	separateWords(strInput, triple, ' ');

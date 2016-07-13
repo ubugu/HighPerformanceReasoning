@@ -10,14 +10,13 @@ using namespace mgpu;
 
 //struct to contains a single triple with a element_t type.
 
-const int MAX_LENGHT = 50;
+const int MAX_LENGHT = 100;
 
 struct tripleContainer {
         char subject[MAX_LENGHT];
         char predicate[MAX_LENGHT]  ;
         char object[MAX_LENGHT];
 };
-
 
 
 __device__ int strcasecmp_d(const char *s1, const char *s2)
@@ -261,13 +260,13 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int in
 	TripleSorter* outerSorter = new TripleSorter(outerMask);
 	
 	//Sort the two input array
-	mergesort<launch_params_t<256, 1> >(innerTable, innerSize , *innerSorter, context);
-	mergesort<launch_params_t<256, 1> >(outerTable, outerSize , *outerSorter, context);
+	mergesort<launch_params_t<128, 1> >(innerTable, innerSize , *innerSorter, context);
+	mergesort<launch_params_t<128, 1> >(outerTable, outerSize , *outerSorter, context);
 	
 	TripleComparator* comparator = new TripleComparator(innerMask, outerMask);
 	
 	//BUG che mi costringe ad invertire inner con outer?
-	mem_t<int2> joinResult = inner_join<launch_params_t<256, 1> >(outerTable, outerSize, innerTable, innerSize,  *comparator, context);
+	mem_t<int2> joinResult = inner_join<launch_params_t<128, 1> >(outerTable, outerSize, innerTable, innerSize,  *comparator, context);
 		
 	mem_t<tripleContainer>* innerResults = new mem_t<tripleContainer>(joinResult.size(), context);
         mem_t<tripleContainer>* outerResults = new mem_t<tripleContainer>(joinResult.size(), context);
@@ -416,36 +415,45 @@ void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperat
 }
 
 int main(int argc, char** argv) {
- 
-		using namespace std;
-		struct timeval beginPr, beginCu, beginEx, end;
-		gettimeofday(&beginPr, NULL);	
-		cudaDeviceReset();
-		standard_context_t context;
-		
-		ifstream rdfStoreFile ("../rdfStore/rdfTimeStr.txt");
-		string strInput;
+               using namespace std;
+                struct timeval beginPr, beginCu, beginEx, end;
+                gettimeofday(&beginPr, NULL);
+                cudaDeviceReset();
+                standard_context_t context;
 
-		//Settare lenght variabile
-       		const int FILE_LENGHT = 302924;
-              	           
-                size_t rdfSize = FILE_LENGHT  * sizeof(tripleContainer);
+                if (argc < 2) {
+                        cout << "wrong number of elements" << endl;
+                }
+
+                ifstream rdfStoreFile (argv[1]);
+         //       ofstream output (argv[2]);
+
+                string strInput;
+
+                int fileLength = 0;
+                while (std::getline(rdfStoreFile, strInput)) {
+                        ++fileLength;
+                }
+
+                rdfStoreFile.clear();
+                rdfStoreFile.seekg(0, ios::beg);
+
+                size_t rdfSize = fileLength  * sizeof(tripleContainer);
                 tripleContainer* h_rdfStore = (tripleContainer*) malloc(rdfSize);
 
 		int size = 0;		
 		char emptyBuff[MAX_LENGHT] = {0};
 	
-                for (int i = 0; i < FILE_LENGHT; i++) {
+                for (int i = 0; i < fileLength; i++) {
                         getline(rdfStoreFile,strInput);
-                	std::vector<string> triple ;
+			std::vector<string> triple ;
                         separateWords(strInput, triple, ' ');
                         
-                        
+           
                         size = triple[0].size();
                         strncpy(h_rdfStore[i].subject, emptyBuff, MAX_LENGHT);
                         strncpy(h_rdfStore[i].subject, triple[0].c_str(), size);
-        
-                        
+                     
         
                         size = triple[1].size();
                         strncpy(h_rdfStore[i].predicate, emptyBuff, MAX_LENGHT);
@@ -459,10 +467,17 @@ int main(int argc, char** argv) {
                 
                 rdfStoreFile.close();
 
-		std::vector<float> timeVector;                
-
-                int N_CYCLE = 1;
+		std::vector<float> timeCuVector;                
+		std::vector<float> timeExVector;
+                int N_CYCLE = 100;
 		for (int i = 0; i < N_CYCLE; i++) {
+
+                        string current = "<http://example.org/string/longlong/element/int/" + to_string(99 - i) + ">";	
+                        string cicle   = "<http://example.org/string/longlong/element/int/" + to_string(i) +  ">";
+			const char* str = current.c_str();
+			const char* str2 = cicle.c_str();	
+			
+			
 			gettimeofday(&beginCu, NULL);
 
 			tripleContainer* d_storeVector;
@@ -472,25 +487,26 @@ int main(int argc, char** argv) {
 			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
 			
 		        //set Queries (select that will be joined)
-		        tripleContainer h_queryVector1; 
+		        tripleContainer h_queryVector1;  
 		        tripleContainer h_queryVector2;
 		        
 		        char object1[MAX_LENGHT] = {0};  
-		     	auto str = "<http://example.org/int/1>";
-		     	std::copy(str, str + 26, object1);
+		     	std::copy(str, str + current.size(), object1);
 		        
 		     	strncpy(h_queryVector1.subject, emptyBuff, MAX_LENGHT);      	
 		     	strncpy(h_queryVector1.predicate, emptyBuff, MAX_LENGHT);
 		     	strncpy(h_queryVector1.object, object1, MAX_LENGHT);
 		     	
 		     	char subject2[MAX_LENGHT] = {0};  
-		     	auto str2 = "<http://example.org/int/0>";
-		     	std::copy(str2, str2 + 26, subject2);
+		     	std::copy(str2, str2 + cicle.size(), subject2);
 		     	
 		        strncpy(h_queryVector2.subject, subject2, MAX_LENGHT);      	
 		     	strncpy(h_queryVector2.predicate, emptyBuff, MAX_LENGHT);
 		     	strncpy(h_queryVector2.object, emptyBuff, MAX_LENGHT);
-		 	         	              
+
+
+		 	cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
+			              
 		        mem_t<tripleContainer> d_queryVector1(1, context);
 			cudaMemcpy(d_queryVector1.data(), &h_queryVector1, sizeof(tripleContainer), cudaMemcpyHostToDevice);
 		
@@ -544,7 +560,7 @@ int main(int argc, char** argv) {
 		
 			gettimeofday(&beginEx, NULL);	
 			
-			queryManager(selectOperations, joinOperations, d_storeVector, FILE_LENGHT);
+			queryManager(selectOperations, joinOperations, d_storeVector, fileLength);
 			
 			//Retrive results from memory
 			std::vector<tripleContainer> selectResults = from_mem(*selectOp1.getResult());
@@ -559,8 +575,9 @@ int main(int argc, char** argv) {
 			float prTime = (end.tv_sec - beginPr.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginPr.tv_usec) / 1000 ;
 			float cuTime = (end.tv_sec - beginCu.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginCu.tv_usec) / 1000 ;
 			
-			timeVector.push_back(cuTime);
-			
+			timeCuVector.push_back(cuTime);
+			timeExVector.push_back(exTime);
+
 			/*
 			//Print Results
 			cout << "first select result" << endl;
@@ -585,9 +602,9 @@ int main(int argc, char** argv) {
 			
 			//Print current cycle results
 			cout << "first Select Size " << selectResults.size() << endl;
-			cout << "first Select Size " << selectResults2.size() << endl;
-			cout << "first Select Size " << finalOuterResults.size() << endl;
-			cout << "first Select Size " << finalInnerResults.size() << endl;			
+			cout << "second Select Size " << selectResults2.size() << endl;
+			cout << "outer  Size " << finalOuterResults.size() << endl;
+			cout << "inner Size " << finalInnerResults.size() << endl;			
 			cout << "Total time: " << prTime << endl;
 			cout << "Cuda time: " << cuTime << endl;
 			cout << "Execution time: " << exTime << endl;					
@@ -599,22 +616,32 @@ int main(int argc, char** argv) {
 			cudaFree(d_storeVector);
 		}
 		
-		int vecSize = timeVector.size();
-		float mean = 0;
-		float variance = 0;
+		int vecSize = timeCuVector.size();
+		float meanCu = 0;
+		float meanEx = 0;
+		float varianceCu = 0;
+		float varianceEx = 0;
 
 		for (int i = 0; i < vecSize; i++) {
-			mean += timeVector[i];
-			variance += timeVector[i] * timeVector[i];
-			cout << timeVector[i] << endl;
+			meanCu += timeCuVector[i];
+			meanEx += timeExVector[i];
+			varianceCu += timeCuVector[i] * timeCuVector[i];
+			varianceEx += timeExVector[i] * timeExVector[i];
+			cout << timeCuVector[i] << endl;
 		}
-		mean = mean / ((float) vecSize);
-		variance = variance / ((float) vecSize);
-		variance = variance - (mean * mean);
+		meanCu = meanCu / ((float) vecSize);
+		varianceCu = varianceCu / ((float) vecSize);
+		varianceCu = varianceCu - (meanCu * meanCu);
 
-		cout << "mean cuda time " << mean << endl;
-		cout << "variance cuda time " << variance << endl;
+                meanEx = meanEx / ((float) vecSize);
+                varianceEx = varianceEx / ((float) vecSize);
+                varianceEx = varianceEx - (meanEx * meanEx);
+
+		cout << "mean cuda time " << meanCu << endl;
+		cout << "variance cuda time " << varianceCu << endl;
 		
+		cout << "mean ex time " << meanEx << endl;
+		cout << "variance ex time " << varianceEx << endl;
 		return 0;
 
 }
