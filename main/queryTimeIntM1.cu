@@ -1,5 +1,3 @@
-
-
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
@@ -17,19 +15,11 @@ struct tripleContainer {
         int object;
 };
 
-struct doubleContainer {
-	int first;
-	int second;
-};
-
 struct devicePointer {
 	tripleContainer* rdfStore;
 	int* subject;
 	int* object;
 	int* predicate;
-	doubleContainer* subPre;
-	doubleContainer* subObj;
-	doubleContainer* preObj;
 };
 
 /**
@@ -162,14 +152,15 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 
                         case (3):
 				{
-				doubleContainer* d_subPred = d_pointer.subPre;
+				int* d_subject = d_pointer.subject;
+				int* d_predicate = d_pointer.predicate;
                                 //Execute the select query
                                 query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
                                         bool subjectEqual = false;
                                         bool predicateEqual = false;
 
-                                        subjectEqual = funcs[subjectComparator](d_subPred[index].first, currentPointer->subject);
-                                        predicateEqual = funcs[predicateComparator](d_subPred[index].second, currentPointer->predicate);
+                                        subjectEqual = funcs[subjectComparator](d_subject[index], currentPointer->subject);
+                                        predicateEqual = funcs[predicateComparator](d_predicate[index], currentPointer->predicate);
 
                                         return (subjectEqual && predicateEqual);
                                 });
@@ -178,14 +169,15 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 
                         case (4):
 				{
-				doubleContainer* d_subObj = d_pointer.subObj;
+				int* d_subject = d_pointer.subject;
+				int* d_object = d_pointer.object;
                                 //Execute the select query
                                 query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
                                         bool subjectEqual = false;
                                         bool objectEqual = false;
 
-                                        subjectEqual = funcs[subjectComparator](d_subObj[index].first, currentPointer->subject);
-                                        objectEqual = funcs[objectComparator](d_subObj[index].second, currentPointer->object);
+                                        subjectEqual = funcs[subjectComparator](d_subject[index], currentPointer->subject);
+                                        objectEqual = funcs[objectComparator](d_object[index], currentPointer->object);
 
                                         return (subjectEqual && objectEqual);
                                 });
@@ -194,14 +186,15 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 
                         case (5):
 				{
-				doubleContainer* d_preObj = d_pointer.preObj;
+				int* d_predicate = d_pointer.predicate;
+				int* d_object = d_pointer.object;
                                 //Execute the select query
                                 query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
                                         bool predicateEqual = false;
                                         bool objectEqual = false;
 
-                                        predicateEqual = funcs[predicateComparator](d_preObj[index].first, currentPointer ->predicate);
-                                        objectEqual = funcs[objectComparator](d_preObj[index].second, currentPointer->object);
+                                        predicateEqual = funcs[predicateComparator](d_predicate[index], currentPointer ->predicate);
+                                        objectEqual = funcs[objectComparator](d_object[index], currentPointer->object);
 
                                         return (predicateEqual && objectEqual);
                                 });
@@ -561,10 +554,6 @@ int main(int argc, char** argv) {
                 int* h_predicate = (int*) malloc(elementSize);
                 int* h_object = (int*) malloc(elementSize);
 
-		size_t doubleSize = fileLength * sizeof(doubleContainer);
-                doubleContainer* h_subPre = (doubleContainer*) malloc(doubleSize);
-                doubleContainer* h_subObj = (doubleContainer*) malloc(doubleSize);
-                doubleContainer* h_preObj = (doubleContainer*) malloc(doubleSize);
 
 
                 //read store from rdfStore
@@ -572,24 +561,14 @@ int main(int argc, char** argv) {
 			getline(rdfStoreFile,strInput);
                         std::vector<string> triple;
                         separateWords(strInput, triple, ' ');
+			
+			h_rdfStore[i].subject = atoi(triple[0].c_str());
+                        h_rdfStore[i].predicate = atoi(triple[1].c_str());
+                        h_rdfStore[i].object = atoi(triple[2].c_str());
+                        h_subject[i] = atoi(triple[0].c_str());
+                        h_predicate[i] = atoi(triple[1].c_str());
+                        h_object[i] = atoi(triple[2].c_str());
 
-
-			int sub = atoi(triple[0].c_str());
-			int pre = atoi(triple[1].c_str());
-			int obj = atoi(triple[2].c_str());					
-
-			h_rdfStore[i].subject = sub;
-                        h_rdfStore[i].predicate = pre;
-                        h_rdfStore[i].object = obj;
-                        h_subject[i] = sub;
-                        h_predicate[i] = pre;
-                        h_object[i] = obj;
-			h_subPre[i].first = sub;
-			h_subPre[i].second = pre;
-                        h_subObj[i].first = sub;
-                        h_subObj[i].second = obj;
-                        h_preObj[i].first = pre;
-                        h_preObj[i].second = obj;
                 }
 
                 rdfStoreFile.close();
@@ -619,27 +598,12 @@ int main(int argc, char** argv) {
                         cudaMalloc(&d_object, elementSize);
                         cudaMemcpy(d_object, h_object, elementSize, cudaMemcpyHostToDevice);
 
-                        doubleContainer* d_subPre;
-                        cudaMalloc(&d_subPre, doubleSize);
-                        cudaMemcpy(d_subPre, h_subPre, doubleSize, cudaMemcpyHostToDevice);
-
-                        doubleContainer* d_subObj;
-                        cudaMalloc(&d_subObj, doubleSize);
-                        cudaMemcpy(d_subObj, h_subObj, doubleSize, cudaMemcpyHostToDevice);
-
-                        doubleContainer* d_preObj;
-                        cudaMalloc(&d_preObj, doubleSize);
-                        cudaMemcpy(d_preObj, h_preObj, doubleSize, cudaMemcpyHostToDevice);
-
 	                devicePointer d_pointer ;
 	                d_pointer.subject = d_subject;
 	                d_pointer.object = d_object;
 	                d_pointer.predicate = d_predicate;
 	                d_pointer.rdfStore = d_storeVector;
-			d_pointer.subPre = d_subPre;
-			d_pointer.subObj = d_subObj;
-			d_pointer.preObj = d_preObj;
-
+				
 			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
 			
 		        //set Queries (select that will be joined)
