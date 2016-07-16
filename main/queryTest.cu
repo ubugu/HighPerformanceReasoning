@@ -1,18 +1,9 @@
-<<<<<<< HEAD
 #include <iostream> 
 #include <fstream> 
 #include <cstdlib> 
 #include <moderngpu/kernel_compact.hxx> 
 #include <moderngpu/kernel_join.hxx> 
-#include <moderngpu/kernel_mergesort.hxx> 
-=======
-#include <iostream>
-#include <fstream>
-#include <cstdlib>
-#include <moderngpu/kernel_compact.hxx>
-#include <moderngpu/kernel_join.hxx>
 #include <moderngpu/kernel_mergesort.hxx>
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
 #include <sys/time.h>
 
 using namespace mgpu;
@@ -195,10 +186,7 @@ class TripleComparator
 			int tripleA[3] = {a.subject, a.predicate, a.object};
 			int tripleB[3] = {b.subject, b.predicate, b.object};
 
-<<<<<<< HEAD
 			//Use mask for choosing on which elements make the join
-=======
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
 			if ((maskA[0] != -1) && (tripleA[maskA[0]] < tripleB[maskB[0]])) {
 				return true;
 			}
@@ -232,7 +220,7 @@ __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest,
 	outerDest[destIndex] = outerSrc[outerIndex];
 }
 
-<<<<<<< HEAD
+
 void printResult(tripleContainer* input, int size) {
 	tripleContainer* elem = (tripleContainer*) malloc(size * sizeof(tripleContainer) );
 
@@ -245,10 +233,6 @@ void printResult(tripleContainer* input, int size) {
 std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int innerSize, tripleContainer* outerTable, int outerSize, JoinMask innerMask[3], JoinMask outerMask[3])
 {
 	
-=======
-std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int innerSize, tripleContainer* outerTable, int outerSize, JoinMask innerMask[3], JoinMask outerMask[3])
-{
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
 	standard_context_t context;
 	std::vector<mem_t<tripleContainer>*> finalResults;
 	
@@ -260,16 +244,9 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int in
 	mergesort(outerTable, outerSize , *outerSorter, context);
 	
 	TripleComparator* comparator = new TripleComparator(innerMask, outerMask);
-<<<<<<< HEAD
 
         mem_t<int2> joinResult = inner_join(innerTable, innerSize, outerTable, outerSize,  *comparator, context);
 
-=======
-	
-	//BUG che mi costringe ad invertire inner con outer?
-	mem_t<int2> joinResult = inner_join(outerTable, outerSize, innerTable, innerSize,  *comparator, context);
-		
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
 	mem_t<tripleContainer>* innerResults = new mem_t<tripleContainer>(joinResult.size(), context);
         mem_t<tripleContainer>* outerResults = new mem_t<tripleContainer>(joinResult.size(), context);
 	
@@ -489,16 +466,12 @@ int main(int argc, char** argv) {
 			cudaMalloc(&d_storeVector, rdfSize);
 			cudaMemcpy(d_storeVector, h_rdfStore, rdfSize, cudaMemcpyHostToDevice);	
 			
-			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
+			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/100>. ?z ?p <http://example.org/int/1>} ";
 			
 		        //set Queries (select that will be joined)
-<<<<<<< HEAD
-		        tripleContainer h_queryVector1 = {-1, -1 , 100};
-		        tripleContainer h_queryVector2 = {-1, -1, 1}; 
-=======
+
 		        tripleContainer h_queryVector1 =  {-1, -1 , 100};
-		        tripleContainer h_queryVector2 =	{0, -1, -1}; 
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
+		        tripleContainer h_queryVector2 = {-1, -1, 1};
 
 			cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
 
@@ -523,36 +496,21 @@ int main(int argc, char** argv) {
 			compareMask.push_back(selectMask1);
 		
 			CompareType selectMask2[3];		
-<<<<<<< HEAD
 			selectMask2[0] = CompareType::NC;
 			selectMask2[1] = CompareType::NC;
 			selectMask2[2] = CompareType::EQ;
-=======
-			selectMask2[0] = CompareType::EQ;
-			selectMask2[1] = CompareType::NC;
-			selectMask2[2] = CompareType::NC;
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
 		
 			compareMask.push_back(selectMask2);
 		
 			//set Join mask
 			JoinMask innerMask[3];
-<<<<<<< HEAD
 			innerMask[0] = JoinMask::SBJ;
 			innerMask[1] = JoinMask::PRE;
-=======
-			innerMask[0] = JoinMask::PRE;
-			innerMask[1] = JoinMask::NJ;
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
 			innerMask[2] = JoinMask::NJ;
 			
 			JoinMask outerMask[3];
 			outerMask[0] = JoinMask::PRE;
-<<<<<<< HEAD
 			outerMask[1] = JoinMask::SBJ;
-=======
-			outerMask[1] = JoinMask::NJ;
->>>>>>> 9dd714f5b58ff5948f58a8bab4a237f921b4274a
 			outerMask[2] = JoinMask::NJ;
 
 			//Creat operation object to pass to query manager
