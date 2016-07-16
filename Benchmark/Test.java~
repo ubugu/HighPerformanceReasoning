@@ -77,8 +77,7 @@ public class Test
 			con.add(iter);
 
 			double startTime = System.nanoTime();
-
-			String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/100> . ?z ?s <http://example.org/int/1> . }";
+			String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/" + (i + 100) + "> . <http://example.org/int/"  + i  +  "> ?p ?o }";
 
 			TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 		    	TupleQueryResult result = tupleQuery.evaluate();
@@ -87,14 +86,14 @@ public class Test
 
 		    	double time = System.nanoTime() - startTime;
 		    	double duration = new Double(time / (double) 1000000);
-
-			double memDuration = System.nanoTime() - startMem;
-
-
+			double memDuration = System.nanoTime() - startMem; 
+			memDuration = memDuration / (double) 1000000;
 			timeVec.add(duration);
 			timeMemVec.add(memDuration);
 			System.out.println(resultList.size());
 		}
+		
+		System.out.println("SIZE IS : " + resultList.size());
 
 		double mean = 0;
 		double memMean = 0;
