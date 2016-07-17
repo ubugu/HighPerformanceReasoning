@@ -111,20 +111,30 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 			case (0):
 				{
 				int* d_subject = d_pointer.subject;
-				//Execute the select query
-				query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
-					bool subjectEqual = false;
-							
-					subjectEqual = funcs[subjectComparator](d_subject[index], currentPointer->subject);
-					
-					return subjectEqual;
-				});
+				tripleContainer* d_storePointer  = d_pointer.rdfStore;
+				std::cout << "doing subject" << std::endl;
+				
+				struct timeval begin, end;
+				gettimeofday(&begin, NULL);	
+				
+                                //Execute the select query
+                                query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
+                                        bool subjectEqual = false;
+
+                                        subjectEqual = funcs[subjectComparator](d_storePointer[index].subject, currentPointer->subject);
+
+                                        return (subjectEqual);
+                                });
+				gettimeofday(&end, NULL);	
+				float exTime = (end.tv_sec - begin.tv_sec ) * 1000 + ((float) end.tv_usec - (float) begin.tv_usec) / 1000 ;
+				std::cout << "SELECT TIME IS of " << i << " is :" << exTime << std::endl;
 				break;
 				}
 
                         case (1):
 				{
 				int* d_predicate = d_pointer.predicate;
+				std::cout << "doing predicate" << std::endl;
                                 //Execute the select query
                                 query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
                                         bool predicateEqual = false;
@@ -139,14 +149,27 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
                         case (2):
 				{
 				int* d_object = d_pointer.object;
+				std::cout << "doing object" << std::endl;
+				tripleContainer* d_storePointer  = d_pointer.rdfStore;
+				
+				struct timeval begin, end;
+				gettimeofday(&begin, NULL);	
                                 //Execute the select query
+            			//Execute the select query
                                 query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
-                                        bool objectEqual = false;
+					bool subjectEqual = false;
+					bool predicateEqual = false;
+					bool objectEqual = false;
+						
+					subjectEqual = funcs[subjectComparator](d_storePointer[index].subject, currentPointer->subject);
+					predicateEqual = funcs[predicateComparator](d_storePointer[index].predicate, currentPointer->predicate);
+                                        objectEqual = funcs[objectComparator](d_storePointer[index].object, currentPointer->object);
 
-                                        objectEqual = funcs[objectComparator](d_object[index], currentPointer->object);
-
-                                        return objectEqual;
+                                        return (objectEqual && subjectEqual && predicateEqual);
                                 });
+                                gettimeofday(&end, NULL);	
+				float exTime = (end.tv_sec - begin.tv_sec ) * 1000 + ((float) end.tv_usec - (float) begin.tv_usec) / 1000 ;
+				std::cout << "SELECT TIME IS of " << i << " is :" << exTime << std::endl;
                                 break;
 				}
 
@@ -484,10 +507,10 @@ void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperat
 		comparatorMask.push_back(selectOp[i]->getOperationMask());
 		arrs.push_back(selectOp[i]->getArr());
 	}
+	
 
 	std::vector<mem_t<tripleContainer>*> selectResults = rdfSelect(d_selectQueries, d_pointer, storeSize, comparatorMask, arrs);
-
-		
+	
 	for (int i = 0; i < selectResults.size(); i++) {
 		selectOp[i]->setResult(selectResults[i]);
 	}
@@ -578,7 +601,7 @@ int main(int argc, char** argv) {
 		std::vector<int> firstVector;
 		std::vector<int> secondVector;
 		std::vector<int> resultVector;
-                int N_CYCLE = 100;
+                int N_CYCLE = 1;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 
@@ -638,6 +661,7 @@ int main(int argc, char** argv) {
 			selectMask2[1] = CompareType::NC;
 			selectMask2[2] = CompareType::NC;
 			SelectArr arr2 = SelectArr::S;
+			
 		
 			compareMask.push_back(selectMask2);
 		

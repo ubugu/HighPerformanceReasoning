@@ -22,6 +22,22 @@ struct tripleContainer {
         int object;
 };
 
+int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
+	const size_t zeroIndex = 0;
+	size_t splitIndex = inputString.find(separator);
+	
+	while (splitIndex != -1)
+		{
+			wordVector.push_back(inputString.substr(zeroIndex, splitIndex));	
+			inputString = inputString.substr(splitIndex + 1 , inputString.length() - 1);
+			splitIndex = inputString.find(separator);
+		}
+	
+	wordVector.push_back(inputString);
+	return 0;
+}
+
+
 /**
 * Enum for condition that are applied 
 * to the triple, and function associated
@@ -56,21 +72,25 @@ __device__ bool notCompare(int a, int b) {
 typedef bool (*select_func) (int, int);
 __device__ select_func funcs[6] = {isLess, isLessEq, isEqual, isGreater, isGreaterEq, notCompare};
 
-int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
-	const size_t zeroIndex = 0;
-	size_t splitIndex = inputString.find(separator);
-	
-	while (splitIndex != -1)
-		{
-			wordVector.push_back(inputString.substr(zeroIndex, splitIndex));	
-			inputString = inputString.substr(splitIndex + 1 , inputString.length() - 1);
-			splitIndex = inputString.find(separator);
-		}
-	
-	wordVector.push_back(inputString);
-	return 0;
-}
 
+
+__global__ void upsweep(int subjectComparator, int predicateComparater, int objectComparator, tripleContianer* currentPointer, bool* result, int size) {
+
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	if (index >= size) {
+		return;
+	}
+	 
+	bool subjectEqual = false;
+	bool predicateEqual = false;
+	bool objectEqual = false;
+						
+	subjectEqual = funcs[subjectComparator](d_storePointer[index].subject, currentPointer->subject);
+	predicateEqual = funcs[predicateComparator](d_storePointer[index].predicate, currentPointer->predicate);
+	objectEqual = funcs[objectComparator](d_storePointer[index].object, currentPointer->object);
+	
+	result[index] = subjectEqual && predicateEqual && objectEqual;
+}
 
 /*
 * Make multiple select query, with specified comparison condition,
@@ -104,23 +124,6 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 		int predicateComparator = comparatorMask[i][1];
 		int objectComparator = comparatorMask[i][2];
 
-		struct timeval begin, end;
-		gettimeofday(&begin, NULL);			
-		//Execute the select query
-		int query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
-			bool subjectEqual = false;
-			bool predicateEqual = false;
-			bool objectEqual = false;
-						
-			subjectEqual = funcs[subjectComparator](d_storePointer[index].subject, currentPointer->subject);
-			predicateEqual = funcs[predicateComparator](d_storePointer[index].predicate, currentPointer->predicate);
-			objectEqual = funcs[objectComparator](d_storePointer[index].object, currentPointer->object);
-
-			return (subjectEqual && predicateEqual && objectEqual);
-		});
-		gettimeofday(&end, NULL);	
-		float exTime = (end.tv_sec - begin.tv_sec ) * 1000 + ((float) end.tv_usec - (float) begin.tv_usec) / 1000 ;
-		std::cout << "upsweep of " << i << " is :" << exTime << std::endl;
 		
 		//Create and store queries results on device
 		mem_t<tripleContainer>* currentResult = new mem_t<tripleContainer>(query_count, context);
