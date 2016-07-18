@@ -118,6 +118,8 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 
 			return (subjectEqual && predicateEqual && objectEqual);
 		});
+
+                cudaDeviceSynchronize();
 		gettimeofday(&end, NULL);	
 		float exTime = (end.tv_sec - begin.tv_sec ) * 1000 + ((float) end.tv_usec - (float) begin.tv_usec) / 1000 ;
 		std::cout << "upsweep of " << i << " is :" << exTime << std::endl;

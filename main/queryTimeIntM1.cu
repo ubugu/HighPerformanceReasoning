@@ -111,7 +111,6 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 			case (0):
 				{
 				int* d_subject = d_pointer.subject;
-				tripleContainer* d_storePointer  = d_pointer.rdfStore;
 				std::cout << "doing subject" << std::endl;
 				
 				struct timeval begin, end;
@@ -121,10 +120,11 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
                                 query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
                                         bool subjectEqual = false;
 
-                                        subjectEqual = funcs[subjectComparator](d_storePointer[index].subject, currentPointer->subject);
+                                        subjectEqual = funcs[subjectComparator](d_subject[index], currentPointer->subject);
 
                                         return (subjectEqual);
                                 });
+	                        cudaDeviceSynchronize();
 				gettimeofday(&end, NULL);	
 				float exTime = (end.tv_sec - begin.tv_sec ) * 1000 + ((float) end.tv_usec - (float) begin.tv_usec) / 1000 ;
 				std::cout << "SELECT TIME IS of " << i << " is :" << exTime << std::endl;
@@ -155,18 +155,13 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 				struct timeval begin, end;
 				gettimeofday(&begin, NULL);	
                                 //Execute the select query
-            			//Execute the select query
                                 query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
-					bool subjectEqual = false;
-					bool predicateEqual = false;
 					bool objectEqual = false;
 						
-					subjectEqual = funcs[subjectComparator](d_storePointer[index].subject, currentPointer->subject);
-					predicateEqual = funcs[predicateComparator](d_storePointer[index].predicate, currentPointer->predicate);
-                                        objectEqual = funcs[objectComparator](d_storePointer[index].object, currentPointer->object);
-
-                                        return (objectEqual && subjectEqual && predicateEqual);
+					objectEqual = funcs[objectComparator](d_object[index], currentPointer->object);
+                                        return (objectEqual);
                                 });
+	                        cudaDeviceSynchronize();
                                 gettimeofday(&end, NULL);	
 				float exTime = (end.tv_sec - begin.tv_sec ) * 1000 + ((float) end.tv_usec - (float) begin.tv_usec) / 1000 ;
 				std::cout << "SELECT TIME IS of " << i << " is :" << exTime << std::endl;
