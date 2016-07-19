@@ -384,7 +384,7 @@ void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperat
 		selectOp[i]->setResult(selectResults[i]);
 	}
 	
-	
+/*	
 	for (int i = 0; i < joinOp.size(); i++) {
 		mem_t<tripleContainer>* innerTable = *joinOp[i]->getInnerTable();
 		mem_t<tripleContainer>* outerTable = *joinOp[i]->getOuterTable();
@@ -392,7 +392,7 @@ void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperat
 		joinOp[i]->setInnerResult(joinResult[0]);
 		joinOp[i]->setOuterResult(joinResult[1]);				
 	}
-	
+*/	
 }
 
 template<typename type_t, typename accuracy>
@@ -471,8 +471,8 @@ int main(int argc, char** argv) {
 			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
 			
 		        //set Queries (select that will be joined)
-		        tripleContainer h_queryVector1 =  {-1, -1, 99 - i};
-		        tripleContainer h_queryVector2 =  {i,  -1, -1}; 
+		        tripleContainer h_queryVector1 =  {-1, -1, 300};
+		        tripleContainer h_queryVector2 =  {250,  -1, -1}; 
 
 			cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
 
@@ -492,12 +492,12 @@ int main(int argc, char** argv) {
 		
 			selectMask1[0] = CompareType::NC;
 			selectMask1[1] = CompareType::NC;
-			selectMask1[2] = CompareType::EQ;
+			selectMask1[2] = CompareType::LEQ;
 
 			compareMask.push_back(selectMask1);
 		
 			CompareType selectMask2[3];		
-			selectMask2[0] = CompareType::EQ;
+			selectMask2[0] = CompareType::LEQ;
 			selectMask2[1] = CompareType::NC;
 			selectMask2[2] = CompareType::NC;
 		
@@ -534,8 +534,8 @@ int main(int argc, char** argv) {
 			//Retrive results from memory
 			std::vector<tripleContainer> selectResults = from_mem(*selectOp1.getResult());
 			std::vector<tripleContainer> selectResults2 = from_mem(*selectOp2.getResult());
-			std::vector<tripleContainer> finalInnerResults = from_mem(*joinOp.getInnerResult());
-			std::vector<tripleContainer> finalOuterResults = from_mem(*joinOp.getOuterResult());
+	//		std::vector<tripleContainer> finalInnerResults = from_mem(*joinOp.getInnerResult());
+	//		std::vector<tripleContainer> finalOuterResults = from_mem(*joinOp.getOuterResult());
 			
 			cudaDeviceSynchronize();
 			gettimeofday(&end, NULL);
@@ -548,7 +548,7 @@ int main(int argc, char** argv) {
 			timeExVector.push_back(exTime);
 			firstVector.push_back(selectResults.size());
 			secondVector.push_back(selectResults2.size());
-			resultVector.push_back(finalOuterResults.size());
+	//		resultVector.push_back(finalOuterResults.size());
 
 			/*
 			//Print Results
@@ -575,14 +575,14 @@ int main(int argc, char** argv) {
 			//Print current cycle results
 			cout << "first Select Size " << selectResults.size() << endl;
 			cout << "second Select Size " << selectResults2.size() << endl;
-			cout << "join Size " << finalOuterResults.size() << endl;			
+		//	cout << "join Size " << finalOuterResults.size() << endl;			
 			cout << "Total time: " << prTime << endl;
 			cout << "Cuda time: " << cuTime << endl;
 			cout << "Execution time: " << exTime << endl;					
 			cout << "" << endl;
 
-			cudaFree((*joinOp.getInnerResult()).data());
-			cudaFree((*joinOp.getOuterResult()).data());
+		//	cudaFree((*joinOp.getInnerResult()).data());
+		//	cudaFree((*joinOp.getOuterResult()).data());
 			cudaFree((*selectOp1.getResult()).data());
 			cudaFree((*selectOp2.getResult()).data());
 			cudaFree(d_storeVector);
