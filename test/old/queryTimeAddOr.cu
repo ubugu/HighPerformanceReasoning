@@ -1,4 +1,4 @@
-#include <iostream>
+ #include <iostream>
 #include <fstream>
 #include <cstdlib>
 #include <moderngpu/kernel_compact.hxx>
@@ -19,57 +19,35 @@ struct devicePointer {
 	tripleContainer* rdfStore;
 	int* subject;
 	int* object;
-	int * predicate;
+	int* predicate;
 };
 
-/**
-* Enum for condition that are applied 
-* to the triple, and function associated
-* to them.
-**/
-enum class CompareType {LT, LEQ, EQ, GT, GEQ, NC};
+__global__ void unarySelect (int* src, int* value, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {
+        int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-__device__ bool isGreater(int a, int b) {
-	return a > b;
+	if (index >= storeSize) {
+		return;
+	}	
+
+	if (src[index] == (*value)) {
+		int add = atomicAdd(size, 1);
+		dest[add] = store[index];
+	}
 }
 
-__device__ bool isGreaterEq(int a, int b) {
-	return a > b;
+__global__ void binarySelect (int* src1, int* src2, int* value1, int* value2, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {
+        int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (index >= storeSize) {
+		return;
+	}	
+
+	if ((src1[index] == (*value1)) && (src2[index] == (*value2))) {
+		int add = atomicAdd(size, 1);
+		dest[add] = store[index];
+	}
 }
 
-__device__ bool isEqual(int a, int b) {
-	return a == b;
-}
-
-__device__ bool isLess(int a, int b) {
-	return a < b;
-}
-
-__device__ bool isLessEq(int a, int b) {
-	return a <= b;
-}
-
-__device__ bool notCompare(int a, int b) {
-	return true;
-}
-
-typedef bool (*select_func) (int, int);
-__device__ select_func funcs[6] = {isLess, isLessEq, isEqual, isGreater, isGreaterEq, notCompare};
-
-int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
-	const size_t zeroIndex = 0;
-	size_t splitIndex = inputString.find(separator);
-	
-	while (splitIndex != -1)
-		{
-			wordVector.push_back(inputString.substr(zeroIndex, splitIndex));	
-			inputString = inputString.substr(splitIndex + 1 , inputString.length() - 1);
-			splitIndex = inputString.find(separator);
-		}
-	
-	wordVector.push_back(inputString);
-	return 0;
-}
 
 
 /*
@@ -87,50 +65,104 @@ int separateWords(std::string inputString, std::vector<std::string> &wordVector,
 std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer*> d_selectQueries, 
 		const devicePointer d_pointer,
 		const int storeSize, 
-		std::vector<int*> comparatorMask) 
+		std::vector<int*> comparatorMask,
+		std::vector<int>  arrs) 
 {
-
+	standard_context_t context;
 	//Initialize elements
 	int querySize =  d_selectQueries.size();
-	standard_context_t context; 
-	auto compact = transform_compact(storeSize, context);
 	std::vector<mem_t<tripleContainer>*> finalResults;
+	
+	int* currentSize;
+	cudaMalloc(&currentSize, sizeof(int));
+	int* zero = (int*) malloc(sizeof(int));
+	*zero = 0;
+
+	int* finalResultSize  = (int*) malloc(sizeof(int));
 
 	//Cycling on all the queries
 	for (int i = 0; i < querySize; i++) {
 		//Save variable to pass to the lambda operator
 		tripleContainer* currentPointer = d_selectQueries[i];
-		int subjectComparator = comparatorMask[i][0];
-		int predicateComparator = comparatorMask[i][1];
-		int objectComparator = comparatorMask[i][2];
-
 		
+		mem_t<tripleContainer>* currentResult = new mem_t<tripleContainer>(storeSize, context);
 
+		int gridSize = 300;
+	        int blockSize = (storeSize / gridSize) + 1;
+		cudaMemcpy(currentSize, zero, sizeof(int), cudaMemcpyHostToDevice);
+			
+		switch(arrs[i]) {
 
-		//Execute the select query
-		int query_count = compact.upsweep([=] MGPU_DEVICE(int index) {
-			bool subjectEqual = false;
-			bool predicateEqual = false;
-			bool objectEqual = false;
+			case(0): {
+				int* value = &(currentPointer->subject);
+
+				unarySelect<<<gridSize,blockSize>>>(d_pointer.subject, value, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
+
+				break;
+			}
+
+			case(1): {
+				int* value = &(currentPointer->predicate);
+			
+				unarySelect<<<gridSize,blockSize>>>(d_pointer.predicate, value, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
+
+				break;
+			}
 						
-			subjectEqual = funcs[subjectComparator](d_storePointer[index].subject, currentPointer->subject);
-			predicateEqual = funcs[predicateComparator](d_storePointer[index].predicate, currentPointer->predicate);
-			objectEqual = funcs[objectComparator](d_storePointer[index].object, currentPointer->object);
+			case(2): {
+                                int* value = &(currentPointer->object);
 
-			return (subjectEqual && predicateEqual && objectEqual);
-		});
+                                unarySelect<<<gridSize,blockSize>>>(d_pointer.object, value, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
+                                break;
+			}
+			
+			case(3): {
+				int* value1 = &(currentPointer->subject);
+				int* value2 = &(currentPointer->predicate);
 
-		//Create and store queries results on device
-		mem_t<tripleContainer>* currentResult = new mem_t<tripleContainer>(query_count, context);
-		tripleContainer* d_currentResult =  currentResult->data();
+				binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.predicate, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
 
-		compact.downsweep([=] MGPU_DEVICE(int dest_index, int source_index) {
-			d_currentResult[dest_index] = d_storePointer[source_index];
-		});
+				break;
+			}
+
+			case(4): {
+				int* value1 = &(currentPointer->subject);
+				int* value2 = &(currentPointer->object);
+
+				binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.object, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
+
+				break;
+			}
+
+			case(5): {
+				int* value1 = &(currentPointer->predicate);
+				int* value2 = &(currentPointer->object);
+
+				binarySelect<<<gridSize,blockSize>>>(d_pointer.predicate, d_pointer.object, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
+
+				break;
+			}
+						
+			case(6): {
+				cudaMemcpy(currentResult->data(), d_pointer.rdfStore, storeSize * sizeof(tripleContainer), cudaMemcpyDeviceToDevice);
+				cudaMemcpy(currentSize, &storeSize, sizeof(int), cudaMemcpyHostToDevice);
+                                break;
+			}
+			
+			
+			default: {
+				printf("ERROR ERRROR ERROR ERROR ERROR ERROR ERROR");
+			}
+
+
+		}
 		
+                cudaMemcpy(finalResultSize, currentSize, sizeof(int), cudaMemcpyDeviceToHost);
+		currentResult->setSize(*finalResultSize);
 		finalResults.push_back(currentResult);
 	}
-
+	cudaFree(currentSize);
+	
 	return finalResults;
 }
 
@@ -142,8 +174,7 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 enum class JoinMask {NJ = -1, SBJ = 0, PRE = 1, OBJ = 2};
 
 //Sorter for sorting the triple due to theorder defined by the sortMask
-class TripleSorter
-{
+ class TripleSorter {
 	private:
 		int sortMask[3];
 	public:
@@ -324,7 +355,7 @@ class JoinOperation
 		}		
 };
 
-enum class SelectArr {S, P, O, SP, SO, SOP}
+enum class SelectArr { S = 0, P = 1, O = 2, SP = 3, SO = 4, PO = 5, SPO = 6};
 
 class SelectOperation 
 {
@@ -332,26 +363,22 @@ class SelectOperation
 	private:
 		mem_t<tripleContainer>* query;
 		mem_t<tripleContainer>* result = 0;
-		int operationMask[3];
-		SelectArr arr;
+		int arr;
 
 	public:
-		SelectOperation(mem_t<tripleContainer>* query, CompareType operationMask[3], SelectArr arr) {
-			this->query = query;
-			this->operationMask[0] = static_cast<int> (operationMask[0]);
-			this->operationMask[1] = static_cast<int> (operationMask[1]);
-			this->operationMask[2] = static_cast<int> (operationMask[2]);		
-                        this->arr = arr;
+		SelectOperation(mem_t<tripleContainer>* query, SelectArr arr) {
+			this->query = query;	
+			this->arr = static_cast<int> (arr);
 		};
+
+		int getArr() {
+			return this-> arr;
+		}
 			
 		mem_t<tripleContainer>* getQuery() {
 			return this->query;
 		};
-		
-		int* getOperationMask() {
-			return this->operationMask;
-		};
-		
+		                                                                            
 		mem_t<tripleContainer>* getResult() {
 			return this->result;
 		};
@@ -368,19 +395,20 @@ class SelectOperation
 /**
 * Function for managing query execution
 **/
-void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, const devicePointer d_pointer, const int storeSize) {
+void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, const devicePointer  d_pointer, const int storeSize) {
 
 	std::vector<tripleContainer*> d_selectQueries;
 	std::vector<int*> comparatorMask;
-	
+	std::vector<int> arrs;
+
 	for (int i = 0; i < selectOp.size(); i++) {
 		d_selectQueries.push_back(selectOp[i]->getQuery()->data());
-		comparatorMask.push_back(selectOp[i]->getOperationMask());
+		arrs.push_back(selectOp[i]->getArr());
 	}
+	
 
-	std::vector<mem_t<tripleContainer>*> selectResults = rdfSelect(d_selectQueries, d_pointer, storeSize, comparatorMask);
+	std::vector<mem_t<tripleContainer>*> selectResults = rdfSelect(d_selectQueries, d_pointer, storeSize, comparatorMask, arrs);
 
-		
 	for (int i = 0; i < selectResults.size(); i++) {
 		selectOp[i]->setResult(selectResults[i]);
 	}
@@ -394,6 +422,22 @@ void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperat
 		joinOp[i]->setOuterResult(joinResult[1]);				
 	}
 	
+}
+
+
+int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
+	const size_t zeroIndex = 0;
+	size_t splitIndex = inputString.find(separator);
+	
+	while (splitIndex != -1)
+		{
+			wordVector.push_back(inputString.substr(zeroIndex, splitIndex));	
+			inputString = inputString.substr(splitIndex + 1 , inputString.length() - 1);
+			splitIndex = inputString.find(separator);
+		}
+	
+	wordVector.push_back(inputString);
+	return 0;
 }
 
 template<typename type_t, typename accuracy>
@@ -500,8 +544,8 @@ int main(int argc, char** argv) {
 			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
 			
 		        //set Queries (select that will be joined)
-		        tripleContainer h_queryVector1 =  {-1, -1 , 99 - i};
-		        tripleContainer h_queryVector2 =	{i, -1, -1}; 
+		        tripleContainer h_queryVector1 =  {-1, -1 , 99};
+		        tripleContainer h_queryVector2 =	{0, -1, -1}; 
 
 			cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
 
@@ -516,22 +560,10 @@ int main(int argc, char** argv) {
 			selectQuery.push_back(d_queryVector1.data());
 			selectQuery.push_back(d_queryVector2.data());
 
-			std::vector<CompareType*> compareMask;
-			CompareType selectMask1[3];
-		
-			selectMask1[0] = CompareType::NC;
-			selectMask1[1] = CompareType::NC;
-			selectMask1[2] = CompareType::EQ;
+			SelectArr arr1 = SelectArr::O;
 
+			SelectArr arr2 = SelectArr::S;
 			
-			compareMask.push_back(selectMask1);
-		
-			CompareType selectMask2[3];		
-			selectMask2[0] = CompareType::EQ;
-			selectMask2[1] = CompareType::NC;
-			selectMask2[2] = CompareType::NC;
-		
-			compareMask.push_back(selectMask2);
 		
 			//set Join mask
 			JoinMask innerMask[3];
@@ -545,8 +577,8 @@ int main(int argc, char** argv) {
 			outerMask[2] = JoinMask::NJ;
 
 			//Creat operation object to pass to query manager
-			SelectOperation  selectOp1(&d_queryVector1, selectMask1);
-			SelectOperation  selectOp2(&d_queryVector2, selectMask2);
+			SelectOperation  selectOp1(&d_queryVector1, arr1);
+			SelectOperation  selectOp2(&d_queryVector2, arr2);
 		
 			JoinOperation  joinOp(selectOp1.getResultAddress(), selectOp2.getResultAddress(), innerMask, outerMask);
 		
@@ -604,20 +636,24 @@ int main(int argc, char** argv) {
 			} */
 			
 			//Print current cycle results
-			output << "first Select Size " << selectResults.size() << endl;
-			output << "second Select Size " << selectResults2.size() << endl;
-			output << "join Size " << finalOuterResults.size() << endl;
-			cout << "first Select Size " << finalInnerResults.size() << endl;			
-			output << "Total time: " << prTime << endl;
-			output << "Cuda time: " << cuTime << endl;
-			output << "Execution time: " << exTime << endl;					
-			output << "" << endl;
+			cout <<"first Select Size " << selectResults.size() << endl;
+			cout << "second Select Size " << selectResults2.size() << endl;
+			cout << "join Size " << finalOuterResults.size() << endl;
+						
+			cout << "Total time: " << prTime << endl;
+			cout << "Cuda time: " << cuTime << endl;
+			cout << "Execution time: " << exTime << endl;					
+			cout << "" << endl;
 
 			cudaFree((*joinOp.getInnerResult()).data());
 			cudaFree((*joinOp.getOuterResult()).data());
 			cudaFree((*selectOp1.getResult()).data());
 			cudaFree((*selectOp2.getResult()).data());
 			cudaFree(d_storeVector);
+			cudaFree(d_storeVector);
+			cudaFree(d_subject);
+			cudaFree(d_object);
+			cudaFree(d_predicate);
 		}
 		
 		std::vector<float> statistics;

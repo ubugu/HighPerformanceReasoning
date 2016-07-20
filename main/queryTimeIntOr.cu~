@@ -5,6 +5,13 @@
 #include <moderngpu/kernel_join.hxx>
 #include <moderngpu/kernel_mergesort.hxx>
 #include <sys/time.h>
+#include <thrust/device_vector.h>
+#include <thrust/transform.h>
+#include <thrust/sequence.h>
+#include <thrust/copy.h>
+#include <thrust/fill.h>
+#include <thrust/replace.h>
+#include <thrust/functional.h>
 
 using namespace mgpu;
 
@@ -111,6 +118,8 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 
 			return (subjectEqual && predicateEqual && objectEqual);
 		});
+
+                cudaDeviceSynchronize();
 		gettimeofday(&end, NULL);	
 		float exTime = (end.tv_sec - begin.tv_sec ) * 1000 + ((float) end.tv_usec - (float) begin.tv_usec) / 1000 ;
 		std::cout << "upsweep of " << i << " is :" << exTime << std::endl;
@@ -451,7 +460,7 @@ int main(int argc, char** argv) {
 		std::vector<int> firstVector;
 		std::vector<int> secondVector;
 		std::vector<int> resultVector;
-                int N_CYCLE = 1;
+                int N_CYCLE = 100;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 
@@ -462,8 +471,8 @@ int main(int argc, char** argv) {
 			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
 			
 		        //set Queries (select that will be joined)
-		        tripleContainer h_queryVector1 =  {-1, -1 , 99 - i};
-		        tripleContainer h_queryVector2 =	{i, -1, -1}; 
+		        tripleContainer h_queryVector1 =  {5, -1, 99 - i};
+		        tripleContainer h_queryVector2 =  {i,  -1, 5}; 
 
 			cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
 
@@ -481,7 +490,7 @@ int main(int argc, char** argv) {
 			std::vector<CompareType*> compareMask;
 			CompareType selectMask1[3];
 		
-			selectMask1[0] = CompareType::NC;
+			selectMask1[0] = CompareType::EQ;
 			selectMask1[1] = CompareType::NC;
 			selectMask1[2] = CompareType::EQ;
 
@@ -490,7 +499,7 @@ int main(int argc, char** argv) {
 			CompareType selectMask2[3];		
 			selectMask2[0] = CompareType::EQ;
 			selectMask2[1] = CompareType::NC;
-			selectMask2[2] = CompareType::NC;
+			selectMask2[2] = CompareType::EQ;
 		
 			compareMask.push_back(selectMask2);
 		

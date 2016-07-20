@@ -1,0 +1,20 @@
+#pragma once
+
+#include <cstdlib>
+#include <moderngpu/context.hxx>
+
+//struct to contains a single triple with int type.
+struct tripleContainer {
+        int subject;
+        int predicate;
+        int object;
+};
+
+struct devicePointer {
+	tripleContainer* rdfStore;
+	int* subject;
+	int* object;
+	int* predicate;
+};
+
+

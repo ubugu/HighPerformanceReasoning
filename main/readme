@@ -1,5 +1,0 @@
-time int originale usa triple s,p,o.
-
-time int M1 usa anche array singoli di s p o.
-
-time int M2 usa anche le coppie di elementi s-p, s-o, p-o.
