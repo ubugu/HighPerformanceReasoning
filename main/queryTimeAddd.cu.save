@@ -1,5 +1,4 @@
-
- #include <iostream>
+#include <iostream>
 #include <fstream>
 #include <cstdlib>
 #include <moderngpu/kernel_compact.hxx>
@@ -16,41 +15,19 @@ struct tripleContainer {
         int object;
 };
 
-template<typename type_t>
-struct bufferPointer {
-	type_t* start;
-	type_t* end;
-}
-
-template<typename rdf_t, typename arr_t>
 struct devicePointer {
-	rdf_t rdfStore;
-	arr_t subject;
-	arr_t predicate;
-	arr_t object;
+	tripleContainer* rdfStore;
+	int* subject;
+	int* object;
+	int* predicate;
 };
 
 class CircularBuffer {
-	private:
-		devicePointer<tripleContainer*, int*> globalPointer;
-		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> circularPointer;
-	public:
-		CircularBuffer(tripleContainer* store, int* subject, int* predicate, int*  object, int size) {
-			globalPointer.rdfStore = store;
-			globalPointer.subject = subject;
-			globalPointer.predicate = predicate;
-			globalPointer.object = object;
-			
-			circularPointer.rdfStore.start = rdfStore;
-                        circularPointer.rdfStore.end = rdfStore + size;
-                        circularPointer.subject.start = subject;
-                        circularPointer.subject.end = subject + size;
-                        circularPointer.predicate.start = predicate;
-                        circularPointer.predicate.end = predicate + size;
-                        circularPointer.object.start = object;
-                        circularPointer.object.end = object + size;
-		}
-};
+	devicePointer globalPointer;
+	
+
+
+}
 
 __global__ void unarySelect (int* src, int* value, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -695,19 +672,7 @@ int main(int argc, char** argv) {
                 statistics = stats<float, float>(timeExVector);
                 cout << "mean ex time " << statistics[0] << endl;
                 cout << "variance ex time " << statistics[1] << endl;
-/*
-                statistics = stats<int, longlong>(firstVector);
-                cout << "mean first select size " << statistics[0] << endl;
-                cout << "variance first select size " << statistics[1] << endl;
 
-                statistics = stats<int, longlong>(secondVector);
-                cout << "mean second select size " << statistics[0] << endl;
-                cout << "variance second select size " << statistics[1] << endl;
-	 
-                statistics = stats<int, longlong>(resultVector);
-                cout << "mean join size " << statistics[0] << endl;
-                cout << "variance join size " << statistics[1] << endl;
-*/
                 return 0;
 
 }
