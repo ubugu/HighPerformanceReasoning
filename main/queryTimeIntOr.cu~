@@ -471,8 +471,8 @@ int main(int argc, char** argv) {
 			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
 			
 		        //set Queries (select that will be joined)
-		        tripleContainer h_queryVector1 =  {5, -1, 99 - i};
-		        tripleContainer h_queryVector2 =  {i,  -1, 5}; 
+		        tripleContainer h_queryVector1 =  {-1, -1, 99};
+		        tripleContainer h_queryVector2 =  {0,  -1, 5}; 
 
 			cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
 
@@ -490,7 +490,7 @@ int main(int argc, char** argv) {
 			std::vector<CompareType*> compareMask;
 			CompareType selectMask1[3];
 		
-			selectMask1[0] = CompareType::EQ;
+			selectMask1[0] = CompareType::NC;
 			selectMask1[1] = CompareType::NC;
 			selectMask1[2] = CompareType::EQ;
 
@@ -499,7 +499,7 @@ int main(int argc, char** argv) {
 			CompareType selectMask2[3];		
 			selectMask2[0] = CompareType::EQ;
 			selectMask2[1] = CompareType::NC;
-			selectMask2[2] = CompareType::EQ;
+			selectMask2[2] = CompareType::NC;
 		
 			compareMask.push_back(selectMask2);
 		

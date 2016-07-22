@@ -1,20 +1,27 @@
 #pragma once
 
 #include <cstdlib>
-#include <moderngpu/context.hxx>
 
 //struct to contains a single triple with int type.
 struct tripleContainer {
         int subject;
         int predicate;
         int object;
+        time_t timeStamp;
 };
 
+template<typename type_t>
+struct bufferPointer {
+	type_t* pointer;
+	int begin;
+	int end;
+};
+
+template<typename rdf_t, typename arr_t>
 struct devicePointer {
-	tripleContainer* rdfStore;
-	int* subject;
-	int* object;
-	int* predicate;
+	rdf_t rdfStore;
+	arr_t subject;
+	arr_t predicate;
+	arr_t object;
 };
-
 

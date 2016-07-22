@@ -2,6 +2,8 @@
 
 #include <cstdlib>
 #include <moderngpu/context.hxx>
+#include <moderngpu/kernel_join.hxx>
+#include <moderngpu/kernel_mergesort.hxx>
 #include "types.hxx"
 
 

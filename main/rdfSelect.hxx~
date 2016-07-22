@@ -2,31 +2,33 @@
 
 #include <cstdlib>
 #include <moderngpu/context.hxx>
-#include "types.hxx"
 
-__global__ void unarySelect (int* src, int* value, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {
+__global__ void unarySelect (bufferPointer<int> src, int* value, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= storeSize) {
+	if (index >= (abs(src.end - src.begin + BUF_LEN) % BUF_LEN) ) {
 		return;
 	}	
 
-	if (src[index] == (*value)) {
+	int newIndex = (src.begin + index) % BUF_LEN;
+	
+	if (src.pointer[newIndex] == (*value)) {
 		int add = atomicAdd(size, 1);
-		dest[add] = store[index];
+		dest[add] = store.pointer[newIndex];
 	}
 }
 
-__global__ void binarySelect (int* src1, int* src2, int* value1, int* value2, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {
+__global__ void binarySelect (bufferPointer<int> src1, bufferPointer<int> src2, int* value1, int* value2, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= storeSize) {
+	if (index >= (abs(src1.end - src1.begin + BUF_LEN) % BUF_LEN) ) {
 		return;
-	}	
+	}		
 
-	if ((src1[index] == (*value1)) && (src2[index] == (*value2))) {
+	int newIndex = (src1.begin + index) % BUF_LEN;
+	if ((src1.pointer[newIndex] == (*value1)) && (src2.pointer[newIndex] == (*value2))) {
 		int add = atomicAdd(size, 1);
-		dest[add] = store[index];
+		dest[add] = store.pointer[newIndex];
 	}
 }
 
@@ -45,7 +47,7 @@ __global__ void binarySelect (int* src1, int* src2, int* value1, int* value2, tr
 * @return a vector of type mem_t in which are saved the query results.
 */
 std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer*> d_selectQueries, 
-		const devicePointer d_pointer,
+		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> d_pointer,
 		const int storeSize, 
 		std::vector<int*> comparatorMask,
 		std::vector<int>  arrs) 
@@ -126,7 +128,7 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 			}
 						
 			case(6): {
-				cudaMemcpy(currentResult->data(), d_pointer.rdfStore, storeSize * sizeof(tripleContainer), cudaMemcpyDeviceToDevice);
+				cudaMemcpy(currentResult->data(), d_pointer.rdfStore.pointer, storeSize * sizeof(tripleContainer), cudaMemcpyDeviceToDevice);
 				cudaMemcpy(currentSize, &storeSize, sizeof(int), cudaMemcpyHostToDevice);
                                 break;
 			}

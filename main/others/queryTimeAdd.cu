@@ -1,4 +1,3 @@
-
  #include <iostream>
 #include <fstream>
 #include <cstdlib>
@@ -16,40 +15,11 @@ struct tripleContainer {
         int object;
 };
 
-template<typename type_t>
-struct bufferPointer {
-	type_t* start;
-	type_t* end;
-}
-
-template<typename rdf_t, typename arr_t>
 struct devicePointer {
-	rdf_t rdfStore;
-	arr_t subject;
-	arr_t predicate;
-	arr_t object;
-};
-
-class CircularBuffer {
-	private:
-		devicePointer<tripleContainer*, int*> globalPointer;
-		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> circularPointer;
-	public:
-		CircularBuffer(tripleContainer* store, int* subject, int* predicate, int*  object, int size) {
-			globalPointer.rdfStore = store;
-			globalPointer.subject = subject;
-			globalPointer.predicate = predicate;
-			globalPointer.object = object;
-			
-			circularPointer.rdfStore.start = rdfStore;
-                        circularPointer.rdfStore.end = rdfStore + size;
-                        circularPointer.subject.start = subject;
-                        circularPointer.subject.end = subject + size;
-                        circularPointer.predicate.start = predicate;
-                        circularPointer.predicate.end = predicate + size;
-                        circularPointer.object.start = object;
-                        circularPointer.object.end = object + size;
-		}
+	tripleContainer* rdfStore;
+	int* subject;
+	int* object;
+	int* predicate;
 };
 
 __global__ void unarySelect (int* src, int* value, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {

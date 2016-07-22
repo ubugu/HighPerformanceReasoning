@@ -1,5 +1,4 @@
-
- #include <iostream>
+   #include <iostream>
 #include <fstream>
 #include <cstdlib>
 #include <moderngpu/kernel_compact.hxx>
@@ -18,9 +17,10 @@ struct tripleContainer {
 
 template<typename type_t>
 struct bufferPointer {
-	type_t* start;
-	type_t* end;
-}
+	type_t* pointer;
+	int begin;
+	int end;
+};
 
 template<typename rdf_t, typename arr_t>
 struct devicePointer {
@@ -30,51 +30,62 @@ struct devicePointer {
 	arr_t object;
 };
 
+const int BUF_LEN = 400000;
+
 class CircularBuffer {
-	private:
-		devicePointer<tripleContainer*, int*> globalPointer;
-		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> circularPointer;
+	private:                          
+		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> pointer;
+		tripleContainer* rdfStore;
 	public:
-		CircularBuffer(tripleContainer* store, int* subject, int* predicate, int*  object, int size) {
-			globalPointer.rdfStore = store;
-			globalPointer.subject = subject;
-			globalPointer.predicate = predicate;
-			globalPointer.object = object;
+		CircularBuffer(tripleContainer* h_store, tripleContainer* d_store, int* subject, int* predicate, int*  object, int size) {
+			rdfStore = h_store;
 			
-			circularPointer.rdfStore.start = rdfStore;
-                        circularPointer.rdfStore.end = rdfStore + size;
-                        circularPointer.subject.start = subject;
-                        circularPointer.subject.end = subject + size;
-                        circularPointer.predicate.start = predicate;
-                        circularPointer.predicate.end = predicate + size;
-                        circularPointer.object.start = object;
-                        circularPointer.object.end = object + size;
+			pointer.rdfStore.pointer = d_store;
+			pointer.subject.pointer = subject;
+			pointer.predicate.pointer = predicate;
+			pointer.object.pointer = object;
+
+			pointer.rdfStore.begin = 0;
+                        pointer.rdfStore.end = size;
+                        pointer.subject.begin = 0;
+                        pointer.subject.end = size;
+                        pointer.predicate.begin = 0;
+                        pointer.predicate.end = size;
+                        pointer.object.begin = 0;
+                        pointer.object.end = size;
+		}
+		
+		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> getPointer() {
+			return pointer;
 		}
 };
 
-__global__ void unarySelect (int* src, int* value, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {
+__global__ void unarySelect (bufferPointer<int> src, int* value, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= storeSize) {
+	if (index >= (abs(src.end - src.begin + BUF_LEN) % BUF_LEN) ) {
 		return;
 	}	
 
-	if (src[index] == (*value)) {
+	int newIndex = (src.begin + index) % BUF_LEN;
+	
+	if (src.pointer[newIndex] == (*value)) {
 		int add = atomicAdd(size, 1);
-		dest[add] = store[index];
+		dest[add] = store.pointer[newIndex];
 	}
 }
 
-__global__ void binarySelect (int* src1, int* src2, int* value1, int* value2, tripleContainer* dest, tripleContainer* store, int* size, int storeSize) {
+__global__ void binarySelect (bufferPointer<int> src1, bufferPointer<int> src2, int* value1, int* value2, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= storeSize) {
+	if (index >= (abs(src1.end - src1.begin + BUF_LEN) % BUF_LEN) ) {
 		return;
-	}	
+	}		
 
-	if ((src1[index] == (*value1)) && (src2[index] == (*value2))) {
+	int newIndex = (src1.begin + index) % BUF_LEN;
+	if ((src1.pointer[newIndex] == (*value1)) && (src2.pointer[newIndex] == (*value2))) {
 		int add = atomicAdd(size, 1);
-		dest[add] = store[index];
+		dest[add] = store.pointer[newIndex];
 	}
 }
 
@@ -93,7 +104,7 @@ __global__ void binarySelect (int* src1, int* src2, int* value1, int* value2, tr
 * @return a vector of type mem_t in which are saved the query results.
 */
 std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer*> d_selectQueries, 
-		const devicePointer d_pointer,
+		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> d_pointer,
 		const int storeSize, 
 		std::vector<int*> comparatorMask,
 		std::vector<int>  arrs) 
@@ -174,7 +185,7 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 			}
 						
 			case(6): {
-				cudaMemcpy(currentResult->data(), d_pointer.rdfStore, storeSize * sizeof(tripleContainer), cudaMemcpyDeviceToDevice);
+				cudaMemcpy(currentResult->data(), d_pointer.rdfStore.pointer, storeSize * sizeof(tripleContainer), cudaMemcpyDeviceToDevice);
 				cudaMemcpy(currentSize, &storeSize, sizeof(int), cudaMemcpyHostToDevice);
                                 break;
 			}
@@ -425,7 +436,7 @@ class SelectOperation
 /**
 * Function for managing query execution
 **/
-void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, const devicePointer  d_pointer, const int storeSize) {
+void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>>  d_pointer, const int storeSize) {
 
 	std::vector<tripleContainer*> d_selectQueries;
 	std::vector<int*> comparatorMask;
@@ -545,7 +556,7 @@ int main(int argc, char** argv) {
 		std::vector<int> firstVector;
 		std::vector<int> secondVector;
 		std::vector<int> resultVector;
-                int N_CYCLE = 100;
+                int N_CYCLE = 1;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 
@@ -565,14 +576,8 @@ int main(int argc, char** argv) {
                         cudaMalloc(&d_object, elementSize);
                         cudaMemcpy(d_object, h_object, elementSize, cudaMemcpyHostToDevice);
 
-	                devicePointer d_pointer ;
-	                d_pointer.subject = d_subject;
-	                d_pointer.object = d_object;
-	                d_pointer.predicate = d_predicate;
-	                d_pointer.rdfStore = d_storeVector;
-				
-			//Use query "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
-			
+			CircularBuffer* buffer =  new CircularBuffer(h_rdfStore, d_storeVector,  d_subject, d_predicate, d_object, fileLength);
+								
 		        //set Queries (select that will be joined)
 		        tripleContainer h_queryVector1 =  {-1, -1 , 99};
 		        tripleContainer h_queryVector2 =	{0, -1, -1}; 
@@ -621,7 +626,7 @@ int main(int argc, char** argv) {
 		
 			gettimeofday(&beginEx, NULL);	
 			
-			queryManager(selectOperations, joinOperations, d_pointer, fileLength);
+			queryManager(selectOperations, joinOperations, buffer->getPointer(), fileLength);
 			
 			//Retrive results from memory
 			std::vector<tripleContainer> finalInnerResults = from_mem(*joinOp.getInnerResult());
