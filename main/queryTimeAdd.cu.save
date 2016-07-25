@@ -1,9 +1,7 @@
-
- #include <iostream>
+#include <iostream>
 #include <fstream>
 #include <cstdlib>
 #include <unistd.h>
-
 #include <moderngpu/kernel_compact.hxx>
 #include <moderngpu/kernel_join.hxx>
 #include <moderngpu/kernel_mergesort.hxx>
@@ -26,14 +24,6 @@ struct bufferPointer {
 	int begin;
 	int end;
 };
-
-template<typename type_t>
-struct circularBuffer {
-	type_t* pointer;
-	int begin;
-	int end;
-	int size;
-}
 
 struct bufferIndex {
 	int begin;
@@ -70,28 +60,31 @@ int separateWords(std::string inputString, std::vector<std::string> &wordVector,
 * So that it improves performance avoiding uneecessary conditional expression
 */
 enum class JoinMask {NJ = -1, SBJ = 0, PRE = 1, OBJ = 2};
-.
+
 const int BUF_LEN = 400000;
 
 class CircularBuffer {
 	private:                          
 		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> pointer;
+		tripleContainer* rdfStore;
 
 	public:
-		CircularBuffer( tripleContainer* d_store, int* subject, int* predicate, int*  object) {	
+		CircularBuffer(tripleContainer* h_store, tripleContainer* d_store, int* subject, int* predicate, int*  object, int size) {
+			rdfStore = h_store;
+			
 			pointer.rdfStore.pointer = d_store;
 			pointer.subject.pointer = subject;
 			pointer.predicate.pointer = predicate;
 			pointer.object.pointer = object;
 
 			pointer.rdfStore.begin = 0;
-                        pointer.rdfStore.end = 0;
+                        pointer.rdfStore.end = size;
                         pointer.subject.begin = 0;
-                        pointer.subject.end = 0;
+                        pointer.subject.end = size;
                         pointer.predicate.begin = 0;
-                        pointer.predicate.end = 0;
+                        pointer.predicate.end = size;
                         pointer.object.begin = 0;
-                        pointer.object.end = 0;
+                        pointer.object.end = size;
 		}
 		
 		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> getPointer() {
@@ -221,10 +214,7 @@ class Query {
 		}
 
 		void moveIndex(int step) {
-			indexes.begin = indexes.end;
-			indexes.end += step;
-
-		}
+	s
 };
 
 class CountQuery : Query {
@@ -262,7 +252,7 @@ class TimeQuery : Query {
 			this->lastTimestamp = 0;
 		}
 
-		bool isReady(long int newTimestamp) {
+		bool isRead(long int newTimestamp) {
 			if (lastTimestamp + stepTime <= newTimestamp {
 				lastTimestamp = newTimestap;
 				return true;
@@ -276,34 +266,16 @@ class TripleGenerator {
 	private:
 		int spanTime;
 		std::ifstream rdfStoreFile;
-
 		std::vector<tripleContainer> storeBuffer;
-		cirularBuffer<long int> timestamps;
-		std::vector<Query> queries;
-		CircularBuffer* deviceBuffer;
+		std::vector<long int> timestamps;
+		std::vector<TimeQuery> timeQueries;
+		std::vector<CountQuery> countQueries;
 
 	public:
 		void checkStep();
 		
-		TripleGenerator(int spanTime, std::ifstream inputFile, int buffSize)   {
+		TripleGenerator(int spanTime)   {
 			this->spanTime = spanTime;
-			this->rdfStoreFile = inputFile; 
-			long int* timestamp = (long int*) malloc(buffSize * sizeof(long int));
-			
-			this->timestamps.pointer = timestamp;
-			this->timestamps.size = buffSize;
-			this->timestsamps.begin = 0;
-			this->timestamps.end = 0;
-
-			tripleContainer* rdfStore;
-			int* subject;
-			int* predicate;
-			int* object;
-			cudaMalloc(&rdfStore, buffSize * sizeof(tripleContainer));
-			cudaMalloc(&subject,  buffSize * sizeof(int));
-			cudaMalloc(&predicate,  buffSize * sizeof(int));
-			cudaMalloc(&object, buffSize * sizeof(int));
-			deviceBuffer = new CicularBuffer(rdfStore, subject, predicate, object);
 		}
 		
 		void start() {
@@ -320,38 +292,20 @@ class TripleGenerator {
 				long int ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
 
 				storeBuffer.push_back(currentTriple);
-		
-				//Circular buffer of timestamps
-				if (timestamps.size == timestamp.end) {
-					timestamp.end = 0;
-				}
-				timestamps.pointer[timestamps.end] = tp;
-				timestamps.end++;
-	
-				this->checkStep();
+				timestamps.push_back(ms);
+				
+			//	this->checkStep();
 				
 				usleep(spanTime);
-			}			
+			}
+			
+			
 		}
 
 
 		void checkStep() {
 			
-			for (CountQuery query : countQueries)  {
-				query.incrementCount();
-				if (query.isReady()) {
-					
-					UPDATE INDEX
-					LANCU KERNEL
-				}
-
-			}
-
-			for (TimeQuery query : timeQueries) {
-				if (query.isRedy(timestamps.pointer[timestamps.end - 1])) {
-					//LAuNCH KERNEL
-				}
-			}
+			for (Query query : queries);
 		}
 
 
