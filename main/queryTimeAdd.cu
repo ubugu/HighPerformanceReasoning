@@ -1,5 +1,4 @@
-
- #include <iostream>
+#include <iostream>
 #include <fstream>
 #include <cstdlib>
 #include <unistd.h>
@@ -17,14 +16,6 @@ struct tripleContainer {
         int subject;
         int predicate;
         int object;
-        time_t timeStamp;
-};
-
-template<typename type_t>
-struct bufferPointer {
-	type_t* pointer;
-	int begin;
-	int end;
 };
 
 template<typename type_t>
@@ -33,21 +24,15 @@ struct circularBuffer {
 	int begin;
 	int end;
 	int size;
-}
-
-struct bufferIndex {
-	int begin;
-	int end;
-}
+};
 
 template<typename rdf_t, typename arr_t>
-struct devicePointer {
+struct tripletPointer {
 	rdf_t rdfStore;
 	arr_t subject;
 	arr_t predicate;
 	arr_t object;
 };
-
 
 int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
 	const size_t zeroIndex = 0;
@@ -202,14 +187,15 @@ class Query {
 	private: 
 		std::vector<SelectOperation*> select;
 		std::vector<JoinOperation*> join;
-		bufferIndex indexes;
+		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> windowPointer;
 
 	public:
-		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join) {
+		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, 
+			triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> rdfPointer) {
+
 			this->join = join;
 			this->sleect = select;
-			indexes.begin = 0;
-			indexes.end = 0;
+			this->windowPointer = rdfPointer;
 		}
 
 		std::vector<SelectOperation*> getSelect() {
@@ -220,11 +206,25 @@ class Query {
 			return join;
 		}
 
-		void moveIndex(int step) {
-			indexes.begin = indexes.end;
-			indexes.end += step;
-
+		void advancePointer(int step) {
+			int newEnd = (windowPointer.rdfStore.end + size) % windowPointer.rdfStore.size;
+			
+			windowPointer.rdfStore.end = newEnd;
+			windowPointer.subject.end = newEnd;
+			windowPointer.predicate.end = newEnd;
+			windowPointer.object.end = newEnd;
 		}
+
+		triplePointer<tripleContainer, int> getStorePointer() {
+			triplePointer<tripleContainer, int> pointer;
+			pointer.rdfStore = rdfPointer.rdfStore.pointer;
+			pointer.subject = rdfPointer.subject.pointer;
+			pointer.predicate = rdfPointer.predicate.pointer;
+			pointer.object = rdfPointer.object.pointer;
+			
+			return pointer;
+		}
+	
 };
 
 class CountQuery : Query {
@@ -233,9 +233,12 @@ class CountQuery : Query {
 		int currenCount;
 
 	public:
-		CountQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, int count) : Query(select,join) {
-			this->count = count;
-			this->currentCount = 0;
+		CountQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
+			triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> rdfPointer,
+ 			int count) : Query(select,join, rdfPointer, timestsampPointer) {
+
+				this->count = count;
+				this->currentCount = 0;
 		} 
 
 		void incrementCount() {
@@ -249,27 +252,122 @@ class CountQuery : Query {
 			}
 			return false;
 		}
-
+	
+		void launch() {
+			queryManager(query.getSelect(), query.getJoin(), query.getPointer(), count);
+			int newBegin = (windowPointer.rdfStore.begin + count) % windowPointer.rdfStore.size;
+			windowPointer.rdfStore.begin = newBegin;
+			windowPointer.subject.begin = newBegin;
+			windowPointer.predicate.begin = newBegin;
+			windowPointer.object.begin = newBegin;
+ 
+		}
 }
 
 class TimeQuery : Query {
 	private:
-		long int stepTime;
+		circularBuffer<long int> timestampPointer;
+		int stepTime;
+		int windowTime;
 		long int lastTimestamp;
+		bool isFirst;
+
 	public:
-		TimeQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, long int stepTime) : Query(select,join) {
-			this->stepTime = stepTime;
-			this->lastTimestamp = 0;
+		TimeQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
+			triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> rdfPointer,
+			circularBuffer<long int> timestampPointer
+ 			int windowTime, int stepTime) : Query(select,join, rdfPointer) {
+				this->stepTime = stepTime;
+				this->windowTime = windowTime;
+				this->lastTimestamp = 0;
+				this->isFirst = 0;
+				this->timestampPointer = timestampPointer;
+		}
+		
+		void setStartingTimestamp(long int timestamp) {
+			this->lastTimestamp = timestamp;
 		}
 
+		void advancePointer(int step) : advancePointer(int) {
+			timestampPointer.end = (windowPointer.timestampPointer.end + size) % windowPointer.timestampPointer.size;
+		}
+
+		
+
 		bool isReady(long int newTimestamp) {
-			if (lastTimestamp + stepTime <= newTimestamp {
-				lastTimestamp = newTimestap;
-				return true;
+			if (isFirst) {
+				if (lastTimestmp + windowTime <= newTimestamp) {
+					lastTimestamp += spanTime;
+					return true;
+				}
+
+			} else {
+				if (lastTimestamp + stepTime <= newTimestamp {
+					lastTimestamp += spanTime;
+					return true;
 			}
+			
 			return false;
 		}
-}
+
+		long int* getTimestampPointer() {
+			return this->timestampPointer.pointer;
+		}
+
+		void launch() {
+			
+			if (!isFirst) {
+				long int startingTime = lastTimestamp - (long int) windowTime;					
+				int newBegin = 0;
+
+				if (timestampPointer.end < timestampPointer.begin) {
+					bool found = false;
+
+					for(int i = timestampPointer.begin; i < timestampPointer.size; i++) {
+						if (timestampPointer.pointer[i] >= startingTime) {
+							found = true;
+							newBegin = i;
+							break;
+						}
+					}				
+
+					if (found == false) {
+						for(int i = 0; i < timestampPointer.end; i++) {
+							if (timestampPointer.pointer[i] >= startingTime) {
+								newBegin = i;
+								break;
+							}				
+						}				
+					}
+
+				} else {
+					for (int i = 0; i < timestampPointer.end; i++) {
+						if (timestampPointer.pointer[i] >= startingTime) {
+							newBegin = i;
+							break;
+						}
+					}
+
+				}
+
+				windowPointer.rdfStore.begin = newBegin;
+				windowPointer.subject.begin = newBegin;
+				windowPointer.predicate.begin = newBegin;
+				windowPointer.object.begin = newBegin;
+
+			} else {
+				isFirst = false;
+			}	
+
+			
+
+			int diff = windowPointer.rdfStore.end - windowPointer.rdfStore.begin;
+			int currentSize = (diff >= 0 ? diff : windowPointer.rdfStore.size + diff); 
+			queryManager(query.getSelect(), query.getJoin(), query.getPointer(), currentSize);  
+		}
+
+
+};
 
 
 class TripleGenerator {
@@ -277,33 +375,25 @@ class TripleGenerator {
 		int spanTime;
 		std::ifstream rdfStoreFile;
 
-		std::vector<tripleContainer> storeBuffer;
-		cirularBuffer<long int> timestamps;
-		std::vector<Query> queries;
-		CircularBuffer* deviceBuffer;
+		std::vector<tripleContainer> rdfBuffer;
+		std::vector<int> subjectBuffer;
+		std::vector<int> predicateBuffer;
+		std::vector<int> objectBuffer;
+
+		std::vector<CountQuery> countQueries;
+		std::vector<TimeQuery> timeQueries;
+
+		circularBuffer<long int> timestampPointer;
+		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> devicePointer;
 
 	public:
 		void checkStep();
+		void advanceDevicePointer();
 		
-		TripleGenerator(int spanTime, std::ifstream inputFile, int buffSize)   {
+		TripleGenerator(int spanTime, std::ifstream inputFile)   {
 			this->spanTime = spanTime;
 			this->rdfStoreFile = inputFile; 
 			long int* timestamp = (long int*) malloc(buffSize * sizeof(long int));
-			
-			this->timestamps.pointer = timestamp;
-			this->timestamps.size = buffSize;
-			this->timestsamps.begin = 0;
-			this->timestamps.end = 0;
-
-			tripleContainer* rdfStore;
-			int* subject;
-			int* predicate;
-			int* object;
-			cudaMalloc(&rdfStore, buffSize * sizeof(tripleContainer));
-			cudaMalloc(&subject,  buffSize * sizeof(int));
-			cudaMalloc(&predicate,  buffSize * sizeof(int));
-			cudaMalloc(&object, buffSize * sizeof(int));
-			deviceBuffer = new CicularBuffer(rdfStore, subject, predicate, object);
 		}
 		
 		void start() {
@@ -319,37 +409,95 @@ class TripleGenerator {
 				gettimeofday(&tp, NULL);
 				long int ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
 
-				storeBuffer.push_back(currentTriple);
-		
-				//Circular buffer of timestamps
-				if (timestamps.size == timestamp.end) {
-					timestamp.end = 0;
-				}
-				timestamps.pointer[timestamps.end] = tp;
-				timestamps.end++;
-	
-				this->checkStep();
+				timestapPointer.pointer[timestampPointer.end] = ms;
+				timestampPointer.end = (windowPointer.timestampPointer.end + 1) % windowPointer.timestampPointer.size;
+				timestampPointer.begin = timestampPointer.end;
+
+				rdfBuffer.push_back(currentTriple);
+				subjectBuffer.push_back(currentTriple.subject);
+				predicateBuffer.push_back(currentTriple.predicate);
+				objectBuffer.push_back(currentTriple.object);
+
+				checkStep();
 				
 				usleep(spanTime);
 			}			
 		}
 
+		void advanceDevicePointer() {
+			int copySize = rdfBuffer.size();
+			
+			circularBuffer<tripleContainer> rdfBuff = devicePointer.rdfStore;
 
+			int newEnd = (rdfBuff.end + copySize) % rdfBuff.size;
+
+			if (newEnd < rdfBuff.end) {
+				int finalHalf = rdfBuff.size - rdfBuff.end;
+				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfBuffer, finalHalf, cudaMemcpyHostToDevice); 
+				cudaMemcpy(devicePointer.subject.end + devicePointer.subject.pointer, subjectBuffer, finalHalf, cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.predicate.end + devicePointer.predicate.pointer, predicateBuffer, finalHalf, cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.object,end + devicePointer.object.pointer, objectBuffer, finalHalf, cudaMemcpyHostToDevice);			
+	
+				int firstHalf = copySize - finalHalf;
+				cudaMemcpy(devicePointer.rdfStore.pointer, rdfBuffer, firstHalf, cudaMemcpyHostToDevice); 
+				cudaMemcpy(devicePointer.subject.pointer, subjectBuffer, firstHalf, cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.predicate.pointer, predicateBuffer, firstHalf, cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.object.pointer, objectBuffer, firstHalf, cudaMemcpyHostToDevice);			
+			} else {
+				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfBuffer, copySize, cudaMemcpyHostToDevice); 
+				cudaMemcpy(devicePointer.subject.end + devicePointer.subject.pointer, subjectBuffer, copySize, cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.predicate.end + devicePointer.predicate.pointer, predicateBuffer, copySize, cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.object,end + devicePointer.object.pointer, objectBuffer, copySize, cudaMemcpyHostToDevice);			
+			}
+
+
+			devicePointer.rdfStore.end = newEnd;
+			devicePointer.subject.end = newEnd;
+			devicePointer.predicate.end = newEnd;
+			devicePointer.object.end = newEnd;
+
+			rdfBuffer.clear();
+			subjectBuffer.clear();
+			predicateBuffer.clear();
+			objectBuffer.clear();
+		}
+		
 		void checkStep() {
 			
 			for (CountQuery query : countQueries)  {
 				query.incrementCount();
 				if (query.isReady()) {
-					
-					UPDATE INDEX
-					LANCU KERNEL
+					advanceDevicePointer();
+					int copySize = rdfBuffer.size();
+			
+					for (CountQuery other : countQueries)  {
+						other.advancePointer(copySize);
+					}
+				
+					for (TimeQuery other : timeQueries) {
+						other.advancePointer(copySize);
+					}
+
+					query.launch();
 				}
 
 			}
 
 			for (TimeQuery query : timeQueries) {
 				if (query.isRedy(timestamps.pointer[timestamps.end - 1])) {
-					//LAuNCH KERNEL
+					advanceDevicePointer();
+					int copySize = rdfBuffer.size();
+			
+					for (CountQuery query : countQueries)  {
+						query.advancePointer(copySize);
+					}
+				
+					for (TimeQuery query : timeQueries) {
+						query.advancePointer(copySize);
+					}
+
+					query.launch();
+
 				}
 			}
 		}
@@ -359,14 +507,14 @@ class TripleGenerator {
 };
 
 
-__global__ void unarySelect (bufferPointer<int> src, int* value, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
+__global__ void unarySelect (circularBuffer<int> src, int* value, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= (abs(src.end - src.begin + BUF_LEN) % BUF_LEN) ) {
+	if (index >= (abs(src.end - src.begin +  src.size) % src.size) ) {
 		return;
 	}	
 
-	int newIndex = (src.begin + index) % BUF_LEN;
+	int newIndex = (src.begin + index) % src.size;
 	
 	if (src.pointer[newIndex] == (*value)) {
 		int add = atomicAdd(size, 1);
@@ -374,14 +522,14 @@ __global__ void unarySelect (bufferPointer<int> src, int* value, tripleContainer
 	}
 }
 
-__global__ void binarySelect (bufferPointer<int> src1, bufferPointer<int> src2, int* value1, int* value2, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
+__global__ void binarySelect (circularBuffer<int> src1, circularBuffer<int> src2, int* value1, int* value2, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= (abs(src1.end - src1.begin + BUF_LEN) % BUF_LEN) ) {
+	if (index >= (abs(src1.end - src1.begin + src1.size) % src1.size) ) {
 		return;
 	}		
 
-	int newIndex = (src1.begin + index) % BUF_LEN;
+	int newIndex = (src1.begin + index) % src1.size;
 	if ((src1.pointer[newIndex] == (*value1)) && (src2.pointer[newIndex] == (*value2))) {
 		int add = atomicAdd(size, 1);
 		dest[add] = store.pointer[newIndex];
@@ -403,7 +551,7 @@ __global__ void binarySelect (bufferPointer<int> src1, bufferPointer<int> src2, 
 * @return a vector of type mem_t in which are saved the query results.
 */
 std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer*> d_selectQueries, 
-		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> d_pointer,
+		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> d_pointer,
 		const int storeSize, 
 		std::vector<int*> comparatorMask,
 		std::vector<int>  arrs) 
@@ -632,7 +780,9 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int in
 /**
 * Function for managing query execution
 **/
-void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>>  d_pointer, const int storeSize) {
+void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, 
+		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> d_pointer, 
+		const int storeSize) {
 
 	std::vector<tripleContainer*> d_selectQueries;
 	std::vector<int*> comparatorMask;
@@ -690,49 +840,8 @@ int main(int argc, char** argv) {
 		cudaDeviceReset();
 		standard_context_t context;
 
-		if (argc < 3) {
-			cout << "wrong number of elements" << endl;
-		}		
-
-		ifstream rdfStoreFile (argv[1]);
-		ofstream output (argv[2]);
-
-		string strInput;
-
-		int fileLength = 0;	 
-		while (std::getline(rdfStoreFile, strInput)) {
-			++fileLength;
-		}
-	
-		rdfStoreFile.clear();
-		rdfStoreFile.seekg(0, ios::beg);
-
-                size_t rdfSize = fileLength  * sizeof(tripleContainer);
-                tripleContainer* h_rdfStore = (tripleContainer*) malloc(rdfSize);
-		
-		size_t elementSize = fileLength * sizeof(int);
-		int* h_subject = (int*) malloc(elementSize);
-                int* h_predicate = (int*) malloc(elementSize);
-                int* h_object = (int*) malloc(elementSize);
-
-
-
-                //read store from rdfStore
-                for (int i = 0; i <fileLength; i++) {
-			getline(rdfStoreFile,strInput);
-                        std::vector<string> triple;
-                        separateWords(strInput, triple, ' ');
-			
-			h_rdfStore[i].subject = atoi(triple[0].c_str());
-                        h_rdfStore[i].predicate = atoi(triple[1].c_str());
-                        h_rdfStore[i].object = atoi(triple[2].c_str());
-                        h_subject[i] = atoi(triple[0].c_str());
-                        h_predicate[i] = atoi(triple[1].c_str());
-                        h_object[i] = atoi(triple[2].c_str());
-
-                }
-
-                rdfStoreFile.close();
+                size_t BUFFER_SIZE = 400000;
+		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> windowPointer;
 
 		std::vector<float> timeCuVector;                
 		std::vector<float> timeExVector;
@@ -743,24 +852,11 @@ int main(int argc, char** argv) {
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 
-			tripleContainer* d_storeVector;
-			cudaMalloc(&d_storeVector, rdfSize);
-			cudaMemcpy(d_storeVector, h_rdfStore, rdfSize, cudaMemcpyHostToDevice);
-
-			int* d_subject;
-			cudaMalloc(&d_subject, elementSize);
-			cudaMemcpy(d_subject, h_subject, elementSize, cudaMemcpyHostToDevice);
-
-                        int* d_predicate;
-                        cudaMalloc(&d_predicate, elementSize);
-                        cudaMemcpy(d_predicate, h_predicate, elementSize, cudaMemcpyHostToDevice);
-
-                        int* d_object;
-                        cudaMalloc(&d_object, elementSize);
-                        cudaMemcpy(d_object, h_object, elementSize, cudaMemcpyHostToDevice);
-
-			CircularBuffer* buffer =  new CircularBuffer(h_rdfStore, d_storeVector,  d_subject, d_predicate, d_object, fileLength);
-								
+			cudaMalloc(windowPointer.rdfStore.pointer, BUFFER_SIZE * sizeof(tripleContainer));
+			cudaMalloc(windowPointer.subject.pointer, BUFFER_SIZE * sizeof(int));
+                        cudaMalloc(windowPointer.predicate.pointer, BUFFER_SIZE * sizeof(int));
+                        cudaMalloc(windowPointer.object.pointer, BUFFER_SIZE * sizeof(int));
+		
 		        //set Queries (select that will be joined)
 		        tripleContainer h_queryVector1 =  {-1, -1 , 99};
 		        tripleContainer h_queryVector2 =	{0, -1, -1}; 
