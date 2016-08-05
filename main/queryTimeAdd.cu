@@ -180,7 +180,7 @@ class Query {
 
 		void advancePointer(int step) {
 			int newEnd = (windowPointer.rdfStore.end + step) % windowPointer.rdfStore.size;
-			
+			std::cout << " new end is " << newEnd << std::endl;
 			windowPointer.rdfStore.end = newEnd;
 			windowPointer.subject.end = newEnd;
 			windowPointer.predicate.end = newEnd;
@@ -195,6 +195,24 @@ class Query {
 			pointer.object = windowPointer.object.pointer;
 			
 			return pointer;
+		}
+		
+		void printResults() {
+			
+			for (auto op : select) {
+				std::vector<tripleContainer> selectResults = from_mem(*(op->getResult()));
+				std::cout <<"selct size " << selectResults.size() << std::endl;
+				
+				cudaFree(op->getResult()->data());
+			}
+			
+			for (auto op : join) {
+				cudaFree(op->getInnerResult()->data());
+				cudaFree(op->getOuterResult()->data());
+			}
+			
+		     
+		
 		}
 	
 };
@@ -215,7 +233,11 @@ class CountQuery : public Query {
 
 				this->count = count;
 				this->currentCount = 0;
-		} 
+		}
+		
+		int getCurrentCount() {
+			return currentCount;
+		}
 
 		void incrementCount() {
 			this->currentCount++;
@@ -223,20 +245,25 @@ class CountQuery : public Query {
 
 		bool isReady() {
 			if (currentCount == count) {
-				count = 0;
+				currentCount = 0;
 				return true;
 			}
 			return false;
 		}
+		
+
 	
 		void launch() {
+			std::cout << "startingWindow is " << windowPointer.object.begin << "; eindingWindow is " << windowPointer.object.end << std::endl;
 			queryManager(getSelect(), getJoin(), windowPointer, count);
 			int newBegin = (windowPointer.rdfStore.begin + count) % windowPointer.rdfStore.size;
 			windowPointer.rdfStore.begin = newBegin;
 			windowPointer.subject.begin = newBegin;
 			windowPointer.predicate.begin = newBegin;
 			windowPointer.object.begin = newBegin;
- 
+			
+
+ 			printResults();
 		}
 };
 
@@ -256,7 +283,7 @@ class TimeQuery : public Query {
 				this->stepTime = stepTime;
 				this->windowTime = windowTime;
 				this->lastTimestamp = 0;
-				this->isFirst = 0;
+				this->isFirst = true;
 				this->timestampPointer = timestampPointer;
 		}
 		
@@ -264,23 +291,24 @@ class TimeQuery : public Query {
 			this->lastTimestamp = timestamp;
 		}
 
-		void advancePointer(int step) : advancePointer(int) {
-			timestampPointer.end = (windowPointer.timestampPointer.end + size) % windowPointer.timestampPointer.size;
+		void advancePointer(int step)  {
+			Query::advancePointer(step);
+			timestampPointer.end = (timestampPointer.end + step) % timestampPointer.size;
 		}
 
 		
 
 		bool isReady(long int newTimestamp) {
 			if (isFirst) {
-				if (lastTimestmp + windowTime <= newTimestamp) {
-					lastTimestamp += spanTime;
+				
+				if (lastTimestamp + windowTime <= newTimestamp) {
 					return true;
 				}
 
 			} else {
-				if (lastTimestamp + stepTime <= newTimestamp {
-					lastTimestamp += spanTime;
+				if (lastTimestamp + stepTime <= newTimestamp) {
 					return true;
+				}
 			}
 			
 			return false;
@@ -291,7 +319,7 @@ class TimeQuery : public Query {
 		}
 
 		void launch() {
-			
+			lastTimestamp += stepTime;
 			if (!isFirst) {
 				long int startingTime = lastTimestamp - (long int) windowTime;					
 				int newBegin = 0;
@@ -310,6 +338,7 @@ class TimeQuery : public Query {
 					if (found == false) {
 						for(int i = 0; i < timestampPointer.end; i++) {
 							if (timestampPointer.pointer[i] >= startingTime) {
+
 								newBegin = i;
 								break;
 							}				
@@ -317,8 +346,10 @@ class TimeQuery : public Query {
 					}
 
 				} else {
-					for (int i = 0; i < timestampPointer.end; i++) {
+					for (int i = timestampPointer.begin; i < timestampPointer.end; i++) {
 						if (timestampPointer.pointer[i] >= startingTime) {
+						/*	std::cout << "new timestamp start is " << timestampPointer.pointer[i] << std::endl;
+							std::cout << "starting time is " << startingTime << std::endl;*/
 							newBegin = i;
 							break;
 						}
@@ -330,7 +361,10 @@ class TimeQuery : public Query {
 				windowPointer.subject.begin = newBegin;
 				windowPointer.predicate.begin = newBegin;
 				windowPointer.object.begin = newBegin;
+				timestampPointer.begin = newBegin;
 
+				std::cout << "new begin is " << newBegin << std::endl;
+				
 			} else {
 				isFirst = false;
 			}	
@@ -340,16 +374,19 @@ class TimeQuery : public Query {
 			int diff = windowPointer.rdfStore.end - windowPointer.rdfStore.begin;
 			int currentSize = (diff >= 0 ? diff : windowPointer.rdfStore.size + diff); 
 			queryManager(getSelect(), getJoin(), windowPointer, currentSize);  
+			printResults();
 		}
 
 
 };
 
 
+
+
 class TripleGenerator {
 	private:
 		int spanTime;
-		std::ifstream rdfStoreFile;
+		std::string fileUrl;
 
 		std::vector<tripleContainer> rdfBuffer;
 		std::vector<int> subjectBuffer;
@@ -363,43 +400,34 @@ class TripleGenerator {
 		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> devicePointer;
 
 	public:
-		void checkStep();
-		void advanceDevicePointer();
-		
-		TripleGenerator(int spanTime, std::ifstream inputFile)   {
+		TripleGenerator(int spanTime, std::string fileUrl, int buffSize)   {
 			this->spanTime = spanTime;
-			this->rdfStoreFile = inputFile; 
+			this->fileUrl = fileUrl;
 			long int* timestamp = (long int*) malloc(buffSize * sizeof(long int));
+			timestampPointer.pointer = timestamp;
+			timestampPointer.end = 0;
+			timestampPointer.begin = 0;
+			timestampPointer.size = buffSize;
 		}
 		
-		void start() {
-			std::string strInput;
- 
-			while (std::getline(rdfStoreFile, strInput)) {
-				std::vector<std::string> triple;
-		                separateWords(strInput, triple, ' ');
-
-				tripleContainer currentTriple  = {atoi(triple[0].c_str()), atoi(triple[1].c_str()), atoi(triple[2].c_str())};
-				
-				struct timeval tp;
-				gettimeofday(&tp, NULL);
-				long int ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
-
-				timestapPointer.pointer[timestampPointer.end] = ms;
-				timestampPointer.end = (windowPointer.timestampPointer.end + 1) % windowPointer.timestampPointer.size;
-				timestampPointer.begin = timestampPointer.end;
-
-				rdfBuffer.push_back(currentTriple);
-				subjectBuffer.push_back(currentTriple.subject);
-				predicateBuffer.push_back(currentTriple.predicate);
-				objectBuffer.push_back(currentTriple.object);
-
-				checkStep();
-				
-				usleep(spanTime);
-			}			
+		void setDevicePointer(triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> devicePointer) {
+			this->devicePointer = devicePointer;
 		}
+		
+		circularBuffer<long int> getTimestampPointer() {
+			return timestampPointer;
+		}
+		
+		void addTimeQuery(TimeQuery query) {
+			timeQueries.push_back(query);
+		}
+		
+		void addCountQuery(CountQuery query) {
+			countQueries.push_back(query);
+		}
+		
 
+		
 		void advanceDevicePointer() {
 			int copySize = rdfBuffer.size();
 			
@@ -407,23 +435,36 @@ class TripleGenerator {
 
 			int newEnd = (rdfBuff.end + copySize) % rdfBuff.size;
 
+			tripleContainer* rdfTemp = (tripleContainer*) malloc(copySize * sizeof(tripleContainer));
+			int* sbjTemp = (int*) malloc(copySize * sizeof(int));
+			int* objTemp = (int*) malloc(copySize * sizeof(int));
+			int* preTemp = (int*) malloc(copySize * sizeof(int));		
+			
+			std::copy(rdfBuffer.begin(), rdfBuffer.end(), rdfTemp);
+			std::copy(subjectBuffer.begin(), subjectBuffer.end(), sbjTemp);
+			std::copy(predicateBuffer.begin(), predicateBuffer.end(), preTemp);
+			std::copy(objectBuffer.begin(), objectBuffer.end(), objTemp);
+				 	
+
 			if (newEnd < rdfBuff.end) {
 				int finalHalf = rdfBuff.size - rdfBuff.end;
-				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfBuffer, finalHalf, cudaMemcpyHostToDevice); 
-				cudaMemcpy(devicePointer.subject.end + devicePointer.subject.pointer, subjectBuffer, finalHalf, cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.predicate.end + devicePointer.predicate.pointer, predicateBuffer, finalHalf, cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.object,end + devicePointer.object.pointer, objectBuffer, finalHalf, cudaMemcpyHostToDevice);			
+				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfTemp, finalHalf * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
+				cudaMemcpy(devicePointer.subject.end + devicePointer.subject.pointer, sbjTemp, finalHalf * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.predicate.end + devicePointer.predicate.pointer, preTemp, finalHalf * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.object.end + devicePointer.object.pointer, objTemp, finalHalf * sizeof(int), cudaMemcpyHostToDevice);			
 	
 				int firstHalf = copySize - finalHalf;
-				cudaMemcpy(devicePointer.rdfStore.pointer, rdfBuffer, firstHalf, cudaMemcpyHostToDevice); 
-				cudaMemcpy(devicePointer.subject.pointer, subjectBuffer, firstHalf, cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.predicate.pointer, predicateBuffer, firstHalf, cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.object.pointer, objectBuffer, firstHalf, cudaMemcpyHostToDevice);			
+				cudaMemcpy(devicePointer.rdfStore.pointer, rdfTemp, firstHalf * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
+				cudaMemcpy(devicePointer.subject.pointer, sbjTemp, firstHalf * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.predicate.pointer, preTemp, firstHalf * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.object.pointer, objTemp, firstHalf * sizeof(int), cudaMemcpyHostToDevice);			
 			} else {
-				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfBuffer, copySize, cudaMemcpyHostToDevice); 
-				cudaMemcpy(devicePointer.subject.end + devicePointer.subject.pointer, subjectBuffer, copySize, cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.predicate.end + devicePointer.predicate.pointer, predicateBuffer, copySize, cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.object,end + devicePointer.object.pointer, objectBuffer, copySize, cudaMemcpyHostToDevice);			
+			
+
+				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfTemp, copySize * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
+				cudaMemcpy(devicePointer.subject.end + devicePointer.subject.pointer, sbjTemp, copySize * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.predicate.end + devicePointer.predicate.pointer, preTemp, copySize * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.object.end + devicePointer.object.pointer, objTemp, copySize * sizeof(int), cudaMemcpyHostToDevice);		
 			}
 
 
@@ -436,46 +477,127 @@ class TripleGenerator {
 			subjectBuffer.clear();
 			predicateBuffer.clear();
 			objectBuffer.clear();
+			free(rdfTemp);
+			free(sbjTemp);
+			free(preTemp);
+			free(objTemp);
 		}
 		
 		void checkStep() {
 			
-			for (CountQuery query : countQueries)  {
+			for (auto &query : countQueries)  {
 				query.incrementCount();
 				if (query.isReady()) {
-					advanceDevicePointer();
 					int copySize = rdfBuffer.size();
-			
-					for (CountQuery other : countQueries)  {
+					advanceDevicePointer();
+					 
+					for (auto &other : countQueries)  {
 						other.advancePointer(copySize);
 					}
 				
-					for (TimeQuery other : timeQueries) {
+					for (auto &other : timeQueries) {
 						other.advancePointer(copySize);
 					}
-
+					
+					
 					query.launch();
 				}
 
 			}
-
-			for (TimeQuery query : timeQueries) {
-				if (query.isRedy(timestamps.pointer[timestamps.end - 1])) {
-					advanceDevicePointer();
-					int copySize = rdfBuffer.size();
 			
-					for (CountQuery query : countQueries)  {
-						query.advancePointer(copySize);
+
+			for (auto &query : timeQueries) {
+				if (query.isReady(timestampPointer.pointer[timestampPointer.end - 1])) {
+				
+					int copySize = rdfBuffer.size();
+					advanceDevicePointer();
+
+			
+					for (auto &other : countQueries)  {
+						other.advancePointer(copySize);
 					}
 				
-					for (TimeQuery query : timeQueries) {
-						query.advancePointer(copySize);
+					for (auto &other : timeQueries) {
+						if (&other == &query) {
+							continue;
+						}
+						other.advancePointer(copySize);
 					}
 
+
+					std::cout << "copy size is " << copySize << std::endl;
+					query.advancePointer(copySize - 1);
 					query.launch();
+					query.advancePointer(1);
 
 				}
 			}
+		}
+		
+		void start() {
+			std::ifstream rdfStoreFile (fileUrl);
+			std::string strInput;
+			
+			int counter = 0;
+
+ 			struct timeval startingTs;
+			gettimeofday(&startingTs, NULL);
+			long int ts = startingTs.tv_sec * 1000000 + startingTs.tv_usec;
+
+ 			for (auto &query : timeQueries) {
+ 				
+				query.setStartingTimestamp(ts);
+ 			}
+ 			
+			while (std::getline(rdfStoreFile, strInput)) {
+			
+				std::vector<std::string> triple;
+		                separateWords(strInput, triple, ' ');
+
+				tripleContainer currentTriple  = {atoi(triple[0].c_str()), atoi(triple[1].c_str()), atoi(triple[2].c_str())};
+				
+				
+				struct timeval tp;
+				gettimeofday(&tp, NULL);
+				long int ms = tp.tv_sec * 1000000 + tp.tv_usec;
+				
+				timestampPointer.pointer[timestampPointer.end] = ms;
+				timestampPointer.end = (timestampPointer.end + 1) % timestampPointer.size;
+				timestampPointer.begin = timestampPointer.end;
+				
+				
+				rdfBuffer.push_back(currentTriple);
+				subjectBuffer.push_back(currentTriple.subject);
+				predicateBuffer.push_back(currentTriple.predicate);
+				objectBuffer.push_back(currentTriple.object);
+				
+				checkStep();
+				
+				usleep(spanTime);
+			}
+			
+			
+			//***** REMOVE IN FINAL CODE: ONLY FOR TEST *****
+			int copySize = rdfBuffer.size();
+			
+			if (copySize != 0 ) {
+				advanceDevicePointer();
+				std::cout << "copy size is " << copySize << std::endl;		 
+				for (auto &query : countQueries)  {
+					query.advancePointer(copySize);
+					query.launch();
+				}
+			
+				for (auto &query : timeQueries) {
+					query.advancePointer(copySize);
+					query.launch();
+				}
+							
+	
+			}
+			
+
+			//***** END REMOVE PART-*****			
 		}
 
 
@@ -620,7 +742,7 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 
 
 		}
-		
+				
                 cudaMemcpy(finalResultSize, currentSize, sizeof(int), cudaMemcpyDeviceToHost);
 		currentResult->setSize(*finalResultSize);
 		finalResults.push_back(currentResult);
@@ -819,25 +941,43 @@ int main(int argc, char** argv) {
                 size_t BUFFER_SIZE = 400000;
 		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> windowPointer;
 
+
 		std::vector<float> timeCuVector;                
 		std::vector<float> timeExVector;
-		std::vector<int> firstVector;
-		std::vector<int> secondVector;
-		std::vector<int> resultVector;
+
+		TripleGenerator manager(1, argv[1], BUFFER_SIZE);
+
                 int N_CYCLE = 1;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
+			
+			cudaMalloc(&windowPointer.rdfStore.pointer, BUFFER_SIZE * sizeof(tripleContainer));
+			cudaMalloc(&windowPointer.subject.pointer, BUFFER_SIZE * sizeof(int));
+                        cudaMalloc(&windowPointer.predicate.pointer, BUFFER_SIZE * sizeof(int));
+                        cudaMalloc(&windowPointer.object.pointer, BUFFER_SIZE * sizeof(int));
+			
+			
+			windowPointer.rdfStore.begin = 0;
+			windowPointer.rdfStore.end = 0;
+			windowPointer.rdfStore.size = BUFFER_SIZE;
+			windowPointer.subject.begin = 0;
+			windowPointer.subject.end = 0;
+			windowPointer.subject.size = BUFFER_SIZE;
+			windowPointer.predicate.begin = 0;
+			windowPointer.predicate.end = 0;
+			windowPointer.predicate.size = BUFFER_SIZE;
+			windowPointer.object.begin = 0;
+			windowPointer.object.end = 0;
+			windowPointer.object.size = BUFFER_SIZE;
 
-			cudaMalloc(windowPointer.rdfStore.pointer, BUFFER_SIZE * sizeof(tripleContainer));
-			cudaMalloc(windowPointer.subject.pointer, BUFFER_SIZE * sizeof(int));
-                        cudaMalloc(windowPointer.predicate.pointer, BUFFER_SIZE * sizeof(int));
-                        cudaMalloc(windowPointer.object.pointer, BUFFER_SIZE * sizeof(int));
-		
+
+			manager.setDevicePointer(windowPointer);
+			
 		        //set Queries (select that will be joined)
 		        tripleContainer h_queryVector1 =  {-1, -1 , 99};
 		        tripleContainer h_queryVector2 =	{0, -1, -1}; 
 
-			cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
+			cout << "query is: first obj: " << h_queryVector1.object << "; secons subj: " << h_queryVector2.subject << endl;
 
 		        mem_t<tripleContainer> d_queryVector1(1, context);
 			cudaMemcpy(d_queryVector1.data(), &h_queryVector1, sizeof(tripleContainer), cudaMemcpyHostToDevice);
@@ -851,9 +991,7 @@ int main(int argc, char** argv) {
 			selectQuery.push_back(d_queryVector2.data());
 
 			SelectArr arr1 = SelectArr::O;
-
 			SelectArr arr2 = SelectArr::S;
-			
 		
 			//set Join mask
 			JoinMask innerMask[3];
@@ -878,20 +1016,26 @@ int main(int argc, char** argv) {
 			selectOperations.push_back(&selectOp1);
 			selectOperations.push_back(&selectOp2);
 			joinOperations.push_back(&joinOp);
-		
+			
+			int stepCount = 100000;
+			TimeQuery count(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 6000000, 6000000);
+			
+			manager.addTimeQuery(count);
+			
 			gettimeofday(&beginEx, NULL);	
 			
-			queryManager(selectOperations, joinOperations, buffer->getPointer(), fileLength);
+			manager.start();
+
 			
-			//Retrive results from memory
+			/*//Retrive results from memory
 			std::vector<tripleContainer> finalInnerResults = from_mem(*joinOp.getInnerResult());
-			std::vector<tripleContainer> finalOuterResults = from_mem(*joinOp.getOuterResult());
+			std::vector<tripleContainer> finalOuterResults = from_mem(*joinOp.getOuterResult());*/
 			
 			cudaDeviceSynchronize();
 			gettimeofday(&end, NULL);
 
-                        std::vector<tripleContainer> selectResults = from_mem(*selectOp1.getResult());
-                        std::vector<tripleContainer> selectResults2 = from_mem(*selectOp2.getResult());
+                      /*  std::vector<tripleContainer> selectResults = from_mem(*selectOp1.getResult());
+                        std::vector<tripleContainer> selectResults2 = from_mem(*selectOp2.getResult());*/
 
 			float exTime = (end.tv_sec - beginEx.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginEx.tv_usec) / 1000 ;
 			float prTime = (end.tv_sec - beginPr.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginPr.tv_usec) / 1000 ;
@@ -899,53 +1043,33 @@ int main(int argc, char** argv) {
 			
 			timeCuVector.push_back(cuTime);
 			timeExVector.push_back(exTime);
-			firstVector.push_back(selectResults.size());
-			secondVector.push_back(selectResults2.size());
-			resultVector.push_back(finalOuterResults.size());
-
 			/*
 			//Print Results
 			cout << "first select result" << endl;
 			for (int i = 0; i < selectResults.size(); i++) {
 				cout << selectResults[i].subject << " " << selectResults[i].predicate << " "  << selectResults[i].object << endl; 
-			}
-		
-			cout << "second select result" << endl;
-			for (int i = 0; i < selectResults2.size(); i++) {
-				cout << selectResults2[i].subject << " " << selectResults2[i].predicate << " "  << selectResults2[i].object << endl; 
-			}
-		
-			cout << "final inner result" << endl;
-			for (int i = 0; i < finalInnerResults.size(); i++) {
-			cout << finalInnerResults[i].subject << " " << finalInnerResults[i].predicate << " "  << finalInnerResults[i].object << endl; 
-			} 
+			}*/
 			
-			cout << "final inner result" << endl;
-			for (int i = 0; i < finalOuterResults.size(); i++) {
-				cout << finalOuterResults[i].subject << " " << finalOuterResults[i].predicate << " "  << finalOuterResults[i].object << endl; 
-			} */
+
 			
 			//Print current cycle results
-			cout <<"first Select Size " << selectResults.size() << endl;
+			/*cout <<"first Select Size " << selectResults.size() << endl;
 			cout << "second Select Size " << selectResults2.size() << endl;
-			cout << "join Size " << finalOuterResults.size() << endl;
+			cout << "join Size " << finalOuterResults.size() << endl;*/
 						
 			cout << "Total time: " << prTime << endl;
 			cout << "Cuda time: " << cuTime << endl;
 			cout << "Execution time: " << exTime << endl;					
 			cout << "" << endl;
 
-			cudaFree((*joinOp.getInnerResult()).data());
-			cudaFree((*joinOp.getOuterResult()).data());
-			cudaFree((*selectOp1.getResult()).data());
-			cudaFree((*selectOp2.getResult()).data());
-			cudaFree(d_storeVector);
-			cudaFree(d_storeVector);
-			cudaFree(d_subject);
-			cudaFree(d_object);
-			cudaFree(d_predicate);
+
+			cudaFree(windowPointer.subject.pointer);
+			cudaFree(windowPointer.predicate.pointer);
+			cudaFree(windowPointer.object.pointer);
+			cudaFree(windowPointer.rdfStore.pointer);
 		}
-		
+
+/*	
 		std::vector<float> statistics;
 		
 		statistics = stats<float, float>(timeCuVector);	
@@ -955,18 +1079,6 @@ int main(int argc, char** argv) {
                 statistics = stats<float, float>(timeExVector);
                 cout << "mean ex time " << statistics[0] << endl;
                 cout << "variance ex time " << statistics[1] << endl;
-/*
-                statistics = stats<int, longlong>(firstVector);
-                cout << "mean first select size " << statistics[0] << endl;
-                cout << "variance first select size " << statistics[1] << endl;
-
-                statistics = stats<int, longlong>(secondVector);
-                cout << "mean second select size " << statistics[0] << endl;
-                cout << "variance second select size " << statistics[1] << endl;
-	 
-                statistics = stats<int, longlong>(resultVector);
-                cout << "mean join size " << statistics[0] << endl;
-                cout << "variance join size " << statistics[1] << endl;
 */
                 return 0;
 

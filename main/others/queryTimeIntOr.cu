@@ -426,24 +426,20 @@ int main(int argc, char** argv) {
 		}		
 
 		ifstream rdfStoreFile (argv[1]);
+		ofstream output (argv[2]);
 
 		string strInput;
 
-		int fileLength = argv[2];	 
-		/*while (std::getline(rdfStoreFile, strInput)) {
+		int fileLength = 0;	 
+		while (std::getline(rdfStoreFile, strInput)) {
 			++fileLength;
-		}*/
+		}
 	
 		rdfStoreFile.clear();
 		rdfStoreFile.seekg(0, ios::beg);
 
                 size_t rdfSize = fileLength  * sizeof(tripleContainer);
                 tripleContainer* h_rdfStore = (tripleContainer*) malloc(rdfSize);
-
-
-		for (int i = 0; i < argv[3]; i++) {
-			getline(rdfStoreFile, strInput);
-		}
 
                 //read store from rdfStore
                 for (int i = 0; i <fileLength; i++) {
@@ -464,7 +460,7 @@ int main(int argc, char** argv) {
 		std::vector<int> firstVector;
 		std::vector<int> secondVector;
 		std::vector<int> resultVector;
-                int N_CYCLE = 1;
+                int N_CYCLE = 100;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 
@@ -476,7 +472,7 @@ int main(int argc, char** argv) {
 			
 		        //set Queries (select that will be joined)
 		        tripleContainer h_queryVector1 =  {-1, -1, 99};
-		        tripleContainer h_queryVector2 =  {0,  -1, -1}; 
+		        tripleContainer h_queryVector2 =  {0,  -1, 5}; 
 
 			cout << "query is " << h_queryVector1.object << " " << h_queryVector2.subject << endl;
 
