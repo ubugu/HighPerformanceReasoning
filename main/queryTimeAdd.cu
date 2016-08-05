@@ -8,7 +8,6 @@
 #include <moderngpu/kernel_mergesort.hxx>
 #include <sys/time.h>
 
-
 using namespace mgpu;
 
 //struct to contains a single triple with int type.
@@ -27,7 +26,7 @@ struct circularBuffer {
 };
 
 template<typename rdf_t, typename arr_t>
-struct tripletPointer {
+struct triplePointer {
 	rdf_t rdfStore;
 	arr_t subject;
 	arr_t predicate;
@@ -55,34 +54,7 @@ int separateWords(std::string inputString, std::vector<std::string> &wordVector,
 * So that it improves performance avoiding uneecessary conditional expression
 */
 enum class JoinMask {NJ = -1, SBJ = 0, PRE = 1, OBJ = 2};
-.
-const int BUF_LEN = 400000;
 
-class CircularBuffer {
-	private:                          
-		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> pointer;
-
-	public:
-		CircularBuffer( tripleContainer* d_store, int* subject, int* predicate, int*  object) {	
-			pointer.rdfStore.pointer = d_store;
-			pointer.subject.pointer = subject;
-			pointer.predicate.pointer = predicate;
-			pointer.object.pointer = object;
-
-			pointer.rdfStore.begin = 0;
-                        pointer.rdfStore.end = 0;
-                        pointer.subject.begin = 0;
-                        pointer.subject.end = 0;
-                        pointer.predicate.begin = 0;
-                        pointer.predicate.end = 0;
-                        pointer.object.begin = 0;
-                        pointer.object.end = 0;
-		}
-		
-		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> getPointer() {
-			return pointer;
-		}
-};
 
 //Section for defining operation classes
 class JoinOperation 
@@ -184,17 +156,17 @@ class SelectOperation
 
 
 class Query {
-	private: 
+	public:
 		std::vector<SelectOperation*> select;
 		std::vector<JoinOperation*> join;
 		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> windowPointer;
 
-	public:
+	
 		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, 
 			triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> rdfPointer) {
 
 			this->join = join;
-			this->sleect = select;
+			this->select = select;
 			this->windowPointer = rdfPointer;
 		}
 
@@ -207,7 +179,7 @@ class Query {
 		}
 
 		void advancePointer(int step) {
-			int newEnd = (windowPointer.rdfStore.end + size) % windowPointer.rdfStore.size;
+			int newEnd = (windowPointer.rdfStore.end + step) % windowPointer.rdfStore.size;
 			
 			windowPointer.rdfStore.end = newEnd;
 			windowPointer.subject.end = newEnd;
@@ -215,27 +187,31 @@ class Query {
 			windowPointer.object.end = newEnd;
 		}
 
-		triplePointer<tripleContainer, int> getStorePointer() {
-			triplePointer<tripleContainer, int> pointer;
-			pointer.rdfStore = rdfPointer.rdfStore.pointer;
-			pointer.subject = rdfPointer.subject.pointer;
-			pointer.predicate = rdfPointer.predicate.pointer;
-			pointer.object = rdfPointer.object.pointer;
+		triplePointer<tripleContainer*, int*> getStorePointer() {
+			triplePointer<tripleContainer*, int*> pointer;
+			pointer.rdfStore = windowPointer.rdfStore.pointer;
+			pointer.subject = windowPointer.subject.pointer;
+			pointer.predicate = windowPointer.predicate.pointer;
+			pointer.object = windowPointer.object.pointer;
 			
 			return pointer;
 		}
 	
 };
 
-class CountQuery : Query {
+void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, 
+		triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> d_pointer, 
+		const int storeSize);
+
+class CountQuery : public Query {
 	private:
 		int count;
-		int currenCount;
+		int currentCount;
 
 	public:
 		CountQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
 			triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> rdfPointer,
- 			int count) : Query(select,join, rdfPointer, timestsampPointer) {
+			int count) : Query(select, join, rdfPointer) {
 
 				this->count = count;
 				this->currentCount = 0;
@@ -254,7 +230,7 @@ class CountQuery : Query {
 		}
 	
 		void launch() {
-			queryManager(query.getSelect(), query.getJoin(), query.getPointer(), count);
+			queryManager(getSelect(), getJoin(), windowPointer, count);
 			int newBegin = (windowPointer.rdfStore.begin + count) % windowPointer.rdfStore.size;
 			windowPointer.rdfStore.begin = newBegin;
 			windowPointer.subject.begin = newBegin;
@@ -262,9 +238,9 @@ class CountQuery : Query {
 			windowPointer.object.begin = newBegin;
  
 		}
-}
+};
 
-class TimeQuery : Query {
+class TimeQuery : public Query {
 	private:
 		circularBuffer<long int> timestampPointer;
 		int stepTime;
@@ -275,8 +251,8 @@ class TimeQuery : Query {
 	public:
 		TimeQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
 			triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> rdfPointer,
-			circularBuffer<long int> timestampPointer
- 			int windowTime, int stepTime) : Query(select,join, rdfPointer) {
+			circularBuffer<long int> timestampPointer,
+			int windowTime, int stepTime) : Query(select, join, rdfPointer) {
 				this->stepTime = stepTime;
 				this->windowTime = windowTime;
 				this->lastTimestamp = 0;
@@ -363,7 +339,7 @@ class TimeQuery : Query {
 
 			int diff = windowPointer.rdfStore.end - windowPointer.rdfStore.begin;
 			int currentSize = (diff >= 0 ? diff : windowPointer.rdfStore.size + diff); 
-			queryManager(query.getSelect(), query.getJoin(), query.getPointer(), currentSize);  
+			queryManager(getSelect(), getJoin(), windowPointer, currentSize);  
 		}
 
 
