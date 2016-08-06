@@ -209,7 +209,9 @@ class Query {
 				cudaFree(op->getInnerResult()->data());
 				cudaFree(op->getOuterResult()->data());
 			}
-					
+			
+		     
+		
 		}
 	
 };
@@ -257,7 +259,8 @@ class CountQuery : public Query {
 			windowPointer.rdfStore.begin = newBegin;
 			windowPointer.subject.begin = newBegin;
 			windowPointer.predicate.begin = newBegin;
-			windowPointer.object.begin = newBegin;			
+			windowPointer.object.begin = newBegin;
+			
 
 			printResults();
 		}
@@ -344,6 +347,8 @@ class TimeQuery : public Query {
 				} else {
 					for (int i = timestampPointer.begin; i < timestampPointer.end; i++) {
 						if (timestampPointer.pointer[i] >= startingTime) {
+						/*	std::cout << "new timestamp start is " << timestampPointer.pointer[i] << std::endl;
+							std::cout << "starting time is " << startingTime << std::endl;*/
 							newBegin = i;
 							break;
 						}
@@ -439,6 +444,7 @@ class TripleGenerator {
 			std::copy(predicateBuffer.begin(), predicateBuffer.end(), preTemp);
 			std::copy(objectBuffer.begin(), objectBuffer.end(), objTemp);
 				 
+
 			if (newEnd < rdfBuff.end) {
 				int finalHalf = rdfBuff.size - rdfBuff.end;
 				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfTemp, finalHalf * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
@@ -447,10 +453,10 @@ class TripleGenerator {
 				cudaMemcpy(devicePointer.object.end + devicePointer.object.pointer, objTemp, finalHalf * sizeof(int), cudaMemcpyHostToDevice);			
 	
 				int firstHalf = copySize - finalHalf;
-				cudaMemcpy(devicePointer.rdfStore.pointer, rdfTemp + finalHalf, firstHalf * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
-				cudaMemcpy(devicePointer.subject.pointer, sbjTemp  + finalHalf, firstHalf * sizeof(int), cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.predicate.pointer, preTemp  + finalHalf, firstHalf * sizeof(int), cudaMemcpyHostToDevice);
-				cudaMemcpy(devicePointer.object.pointer, objTemp + finalHalf, firstHalf * sizeof(int), cudaMemcpyHostToDevice);			
+				cudaMemcpy(devicePointer.rdfStore.pointer, rdfTemp, firstHalf * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
+				cudaMemcpy(devicePointer.subject.pointer, sbjTemp, firstHalf * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.predicate.pointer, preTemp, firstHalf * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(devicePointer.object.pointer, objTemp, firstHalf * sizeof(int), cudaMemcpyHostToDevice);			
 			} else {
 				cudaMemcpy(devicePointer.rdfStore.end + devicePointer.rdfStore.pointer, rdfTemp, copySize * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
 				cudaMemcpy(devicePointer.subject.end + devicePointer.subject.pointer, sbjTemp, copySize * sizeof(int), cudaMemcpyHostToDevice);
@@ -459,7 +465,6 @@ class TripleGenerator {
 			}
 
 
-			
 			devicePointer.rdfStore.end = newEnd;
 			devicePointer.subject.end = newEnd;
 			devicePointer.predicate.end = newEnd;
@@ -532,15 +537,15 @@ class TripleGenerator {
 			
 			int counter = 0;
 
-			struct timeval startingTs;
+ 			struct timeval startingTs;
 			gettimeofday(&startingTs, NULL);
 			long int ts = startingTs.tv_sec * 1000000 + startingTs.tv_usec;
 
-			for (auto &query : timeQueries) {
-				
+ 			for (auto &query : timeQueries) {
+ 				
 				query.setStartingTimestamp(ts);
-			}
-			
+ 			}
+ 			
 			while (std::getline(rdfStoreFile, strInput)) {
 			
 				std::vector<std::string> triple;
@@ -949,18 +954,17 @@ int main(int argc, char** argv) {
                         cudaMalloc(&windowPointer.object.pointer, BUFFER_SIZE * sizeof(int));
 			
 			
-			int begin = 300000;
-			windowPointer.rdfStore.begin = begin;
-			windowPointer.rdfStore.end = begin;
+			windowPointer.rdfStore.begin = 0;
+			windowPointer.rdfStore.end = 0;
 			windowPointer.rdfStore.size = BUFFER_SIZE;
-			windowPointer.subject.begin = begin;
-			windowPointer.subject.end = begin;
+			windowPointer.subject.begin = 0;
+			windowPointer.subject.end = 0;
 			windowPointer.subject.size = BUFFER_SIZE;
-			windowPointer.predicate.begin = begin;
-			windowPointer.predicate.end = begin;
+			windowPointer.predicate.begin = 0;
+			windowPointer.predicate.end = 0;
 			windowPointer.predicate.size = BUFFER_SIZE;
-			windowPointer.object.begin = begin;
-			windowPointer.object.end = begin;
+			windowPointer.object.begin = 0;
+			windowPointer.object.end = 0;
 			windowPointer.object.size = BUFFER_SIZE;
 
 
@@ -1011,12 +1015,9 @@ int main(int argc, char** argv) {
 			joinOperations.push_back(&joinOp);
 			
 			int stepCount = 100000;
-/*
 			TimeQuery count(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 6000000, 6000000);
-			manager.addTimeQuery(count);*/
-
-			CountQuery count(selectOperations, joinOperations, windowPointer, 150000);
-			manager.addCountQuery(count);
+			
+			manager.addTimeQuery(count);
 			
 			gettimeofday(&beginEx, NULL);	
 			
@@ -1077,4 +1078,8 @@ int main(int argc, char** argv) {
                 cout << "variance ex time " << statistics[1] << endl;
 */
                 return 0;
+
 }
+
+
+
