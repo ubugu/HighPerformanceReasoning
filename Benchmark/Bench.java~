@@ -1,9 +1,7 @@
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.PrintWriter;
+import org.eclipse.rdf4j.model.*;
+import java.nio.channels.*;
+import org.eclipse.rdf4j.model.impl.*;
+import java.io.*;
 import java.net.URL;
 import java.util.*;
 import java.lang.Object;
@@ -31,65 +29,111 @@ public class Bench
     {
         
       	try {
-      		//Open rdf repository, file and connection to repository
-      		
-		List timeVec = new LinkedList();
-		int N_CYCLES = 1;
-		File file =  new File("../rdfStore/rdfTimeStr.txt");
-	       		
-	       				
-		List<BindingSet> resultList = null;		
-		Repository repo = new SailRepository(new MemoryStore());
-	       	String baseURI = "http://example.org/example/local";
-		repo.initialize();
-			
-		
-		RepositoryConnection con = repo.getConnection();
-		con.add(file, baseURI, RDFFormat.NTRIPLES);
-		for (int i =0; i <N_CYCLES;  i ++) {
-			
-		
-			double startTime = System.nanoTime();
-		//	String queryString = "SELECT ?p ?w WHERE {   <http://example.org/int/0> ?w  ?p. <http://example.org/int/0> ?p  <http://example.org/int/1>} ";
+//      		Open rdf repository, file and connection to repository
 
-			String queryString = "SELECT * WHERE {  ?s ?p  <http://example.org/int/1>.  <http://example.org/int/0> ?p  ?o} ";
-			
+/*
+      		Repository repo = new SailRepository(new MemoryStore());
+		repo.initialize();
+		RepositoryConnection con = repo.getConnection();
+
+*/
+		int FILE_LENGHT = 302924;
+                File file =  new File("../rdfStore/sesameStr500.txt");
+		List<SimpleStatement> statements = new LinkedList<SimpleStatement>();
+		FileInputStream fis = new FileInputStream(file);
+
+		BufferedReader br = new BufferedReader(new InputStreamReader(fis));
+		ValueFactory factory = SimpleValueFactory.getInstance();
+
+		String line = null;
+		while ((line = br.readLine()) != null) {
+			String[] parts = line.split(" ");
+ 			parts[0] = parts[0].substring(1, parts[0].length() - 1);
+                        parts[1] = parts[1].substring(1, parts[1].length() - 1);
+                        parts[2] = parts[2].substring(1, parts[2].length() - 1);
+
+                        IRI sub = factory.createIRI(parts[0]);
+                        IRI pre = factory.createIRI(parts[1]);
+			IRI obj = factory.createIRI(parts[2]);
+			SimpleStatement statement = (SimpleStatement) factory.createStatement(sub, pre, obj);
+			statements.add(statement);
+		}
+
+		br.close();
+
+		Iterable<SimpleStatement> iter = statements;
+		
+		List timeVec = new LinkedList();
+		List timeMemVec = new LinkedList();
+
+		int N_CYCLES = 1;
+		List<BindingSet> resultList = null;
+		for (int i =0; i <= N_CYCLES;  i++) {
+	                Repository repo = new SailRepository(new MemoryStore());
+        	        repo.initialize();
+	                RepositoryConnection con = repo.getConnection();
+
+			double startMem = System.nanoTime();
+			con.add(iter);
+
+			double startTime = System.nanoTime();
+			String queryString = "SELECT * WHERE {?p ?z  <http://example.org/int/" + (99) + "> . <http://example.org/int/"  + 0  +  "> ?p ?o }";
+
 			TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 		    	TupleQueryResult result = tupleQuery.evaluate();
-		    	
-		    	//Force evaluation or results (as suggested by sesame)
+
 		    	resultList = QueryResults.asList(result);
-		    	
+
 		    	double time = System.nanoTime() - startTime;
 		    	double duration = new Double(time / (double) 1000000);
+			double memDuration = System.nanoTime() - startMem; 
+			memDuration = memDuration / (double) 1000000;
 			timeVec.add(duration);
+			timeMemVec.add(memDuration);
+			System.out.println("result size is " + resultList.size());
 		}
-		
 
-		/*
-		for (BindingSet result : resultList) {
-			System.out.println(result);
-		}
-		
-		System.out.println(resultList.size());*/
-		
-		
 		double mean = 0;
+		double memMean = 0;
 		double variance = 0;
-		
+		double memVariance = 0;
+
 		for (Object value : timeVec) {
 			Double value2 = (Double) value;
-			System.out.println(value2.doubleValue());
 			mean += value2.doubleValue();
 			variance += value2.doubleValue() * value2.doubleValue();
+			System.out.println(value2);
 		}
-		mean = mean / (double) timeVec.size();
-		variance = variance / (double) timeVec.size();
-		variance = variance - mean * mean;
+
+                System.out.println("Memory Time");
+                for (Object value : timeMemVec) {
+                        Double value2 = (Double) value;
+                        memMean += value2.doubleValue();
+                        memVariance += value2.doubleValue() * value2.doubleValue();
+                        
+               }
 		
-		/*System.out.println("Variance is " + variance);*/
-		System.out.println("Mean is " + mean);
-	
+		double first = ((Double) timeVec.get(0)).doubleValue();
+		mean = mean - first;
+		variance = variance - first * first;
+ 		mean = mean / (double) (timeVec.size() - 1);
+		variance = variance / (double) (timeVec.size() - 1);
+		variance = variance - mean * mean;
+
+                memMean = memMean / (double) timeVec.size();
+                memVariance = memVariance / (double) timeVec.size();
+                memVariance = memVariance - memMean * memMean;
+
+		System.out.println("Activation time is :" +  first);
+
+		System.out.println("Execution Variance is " + variance);
+		System.out.println("Execution Mean is " + mean);
+
+                System.out.println("Memory Variance is " + memVariance);
+                System.out.println("memory Mean is " + memMean);
+
+
+
 	} catch (Exception e) {
 
 		System.out.println("error :");
@@ -97,6 +141,6 @@ public class Bench
 		e.printStackTrace();
 	}
 
-      
+
     }
 }

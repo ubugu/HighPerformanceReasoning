@@ -38,7 +38,7 @@ public class Bench
 
 */
 		int FILE_LENGHT = 302924;
-                File file =  new File("../rdfStore/rdfTimeStr.txt");
+                File file =  new File("../rdfStore/sesameStr500.txt");
 		List<SimpleStatement> statements = new LinkedList<SimpleStatement>();
 		FileInputStream fis = new FileInputStream(file);
 
@@ -66,9 +66,9 @@ public class Bench
 		List timeVec = new LinkedList();
 		List timeMemVec = new LinkedList();
 
-		int N_CYCLES = 100;
+		int N_CYCLES = 1;
 		List<BindingSet> resultList = null;
-		for (int i =100; i >= 0;  i--) {
+		for (int i =0; i <= N_CYCLES;  i++) {
 	                Repository repo = new SailRepository(new MemoryStore());
         	        repo.initialize();
 	                RepositoryConnection con = repo.getConnection();
@@ -77,7 +77,7 @@ public class Bench
 			con.add(iter);
 
 			double startTime = System.nanoTime();
-			String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/" + (i + 100) + "> . <http://example.org/int/"  + i  +  "> ?p ?o }";
+			String queryString = "SELECT * WHERE {?p ?o  <http://example.org/int/" + (99) + "> . <http://example.org/int/"  + 0  +  "> ?p ?o }";
 
 			TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 		    	TupleQueryResult result = tupleQuery.evaluate();
@@ -90,7 +90,7 @@ public class Bench
 			memDuration = memDuration / (double) 1000000;
 			timeVec.add(duration);
 			timeMemVec.add(memDuration);
-			System.out.println(resultList.size());
+			System.out.println("result size is " + resultList.size());
 		}
 
 		double mean = 0;

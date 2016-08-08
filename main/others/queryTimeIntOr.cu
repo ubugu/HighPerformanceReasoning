@@ -15,6 +15,8 @@
 
 using namespace mgpu;
 
+int TEST_VALUE = 0;
+
 //struct to contains a single triple with int type.
 struct tripleContainer {
         int subject;
@@ -216,6 +218,35 @@ class TripleComparator
 		}
 };
 
+struct mask_s {
+	int subject;
+	int predicate;
+	int object;
+};
+ 
+__global__ void reorderTriple(tripleContainer* src, tripleContainer* dest, int maxSize, mask_s mask) {
+		
+	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
+ 
+	if (destIndex  >= maxSize)  {
+		return;
+	}
+
+	int triple[3] = {src[destIndex].subject, src[destIndex].predicate, src[destIndex].object};
+ 	tripleContainer destTriple = {triple[mask.subject], -1, -1};
+ 	
+ 	if (mask.predicate != -1) {
+ 		destTriple.predicate = triple[mask.predicate];
+ 	}
+ 	
+ 	
+ 	if (mask.object != -1) {
+	 	destTriple.object = triple[mask.object];
+ 	}
+ 	
+	dest[destIndex] = destTriple;
+}
+
 
 __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest, tripleContainer* outerSrc, tripleContainer* outerDest, int2* srcIndex, int maxSize) 
 {
@@ -233,6 +264,8 @@ __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest,
 	outerDest[destIndex] = outerSrc[outerIndex];
 }
 
+
+
 std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int innerSize, tripleContainer* outerTable, int outerSize, JoinMask innerMask[3], JoinMask outerMask[3])
 {
 	standard_context_t context;
@@ -240,23 +273,40 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int in
 	
 	TripleSorter* innerSorter = new TripleSorter(innerMask);
 	TripleSorter* outerSorter = new TripleSorter(outerMask);
+	TripleComparator* comparator = new TripleComparator(innerMask, outerMask);
+
+	struct timeval beginCu, end;
+	gettimeofday(&beginCu, NULL);
+	mask_s mask;
+	mask.subject = static_cast<int> (outerMask[0]);
+	mask.predicate = static_cast<int> (outerMask[1]);
+	mask.object = static_cast<int> (outerMask[2]);	
+	int gridSize = 64;
+	int blockSize = (outerSize/ gridSize) + 1;
+	mem_t<tripleContainer>* tempOuter = new mem_t<tripleContainer>(outerSize, context);
+	reorderTriple<<<gridSize, blockSize>>>(outerTable, tempOuter->data(), outerSize, mask);
+	cudaDeviceSynchronize();
+	gettimeofday(&end, NULL);
+	float cuTime = (end.tv_sec - beginCu.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginCu.tv_usec) / 1000 ;
+	
+	std::cout << "OVERHEAD TIME IS " << cuTime << std::endl;
 	
 	//Sort the two input array
 	mergesort(innerTable, innerSize , *innerSorter, context);
-	mergesort(outerTable, outerSize , *outerSorter, context);
+	mergesort(tempOuter->data(), outerSize , *innerSorter, context);
 	
-	TripleComparator* comparator = new TripleComparator(innerMask, outerMask);
+	
 	
 	//BUG che mi costringe ad invertire inner con outer?
-	mem_t<int2> joinResult = inner_join(outerTable, outerSize, innerTable, innerSize,  *comparator, context);
+	mem_t<int2> joinResult = inner_join( innerTable, innerSize, tempOuter->data(), outerSize,  *innerSorter, context);
 		
 	mem_t<tripleContainer>* innerResults = new mem_t<tripleContainer>(joinResult.size(), context);
         mem_t<tripleContainer>* outerResults = new mem_t<tripleContainer>(joinResult.size(), context);
 	
 	//SETTARE DIVISIONE CORRETTA
 	//BIsogna settare come comporatrsi quando il valore della join supera i 129k risultati
-	int gridSize = 64;
-	int blockSize = (joinResult.size() / gridSize) + 1; 
+	gridSize = 64;
+	blockSize = (joinResult.size() / gridSize) + 1; 
 	indexCopy<<<gridSize, blockSize>>>(innerTable, innerResults->data(), outerTable, outerResults->data(), joinResult.data(), joinResult.size());
 
 	finalResults.push_back(innerResults);
@@ -460,7 +510,7 @@ int main(int argc, char** argv) {
 		std::vector<int> firstVector;
 		std::vector<int> secondVector;
 		std::vector<int> resultVector;
-                int N_CYCLE = 100;
+                int N_CYCLE = 1;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 
@@ -505,13 +555,13 @@ int main(int argc, char** argv) {
 		
 			//set Join mask
 			JoinMask innerMask[3];
-			innerMask[0] = JoinMask::PRE;
-			innerMask[1] = JoinMask::NJ;
+			innerMask[0] = JoinMask::SBJ;
+			innerMask[1] = JoinMask::PRE;
 			innerMask[2] = JoinMask::NJ;
 			
 			JoinMask outerMask[3];
 			outerMask[0] = JoinMask::PRE;
-			outerMask[1] = JoinMask::NJ;
+			outerMask[1] = JoinMask::OBJ;
 			outerMask[2] = JoinMask::NJ;
 
 			//Creat operation object to pass to query manager
@@ -610,6 +660,7 @@ int main(int argc, char** argv) {
                 cout << "mean join size " << statistics[0] << endl;
                 cout << "variance join size " << statistics[1] << endl;
 */
+		cout << "FINAL VALUE IS " << TEST_VALUE << std::endl;
                 return 0;
 
 }
