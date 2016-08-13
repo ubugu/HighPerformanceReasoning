@@ -9,7 +9,16 @@
 
 using namespace mgpu;
 
+//TODO implementare la projection su gpu
+
+//TODO 
+//VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
 int TEST_VALUE[2]  {0, 0};
+std::vector<float> timeCuVector;                
+std::vector<long int> timeExVector;
+bool isLaunched = false;
+//** END TESTING ***//
+
 
 //struct to contains a single triple with int type.
 struct tripleContainer {
@@ -18,6 +27,7 @@ struct tripleContainer {
         int object;
 };
 
+//Struct for circular buffer
 template<typename type_t>
 struct circularBuffer {
 	type_t* pointer;
@@ -27,15 +37,12 @@ struct circularBuffer {
 	
 	circularBuffer() : pointer(0), begin(0), end(0), size(0) {}
 	
-	circularBuffer(int begin, int size, type_t* pointer) {
-		this->begin = begin;
-		this->end = begin;
-		this->size = size;
-		this->pointer = pointer;
+	int getLength() {
+		return (abs(end - begin + size) % size);
 	}
-
 };
 
+//Struct for containing the pointer to an rdf store (divided into subject predicate and object) 
 template<typename rdf_t, typename arr_t>
 struct triplePointer {
 	rdf_t rdfStore;
@@ -44,6 +51,10 @@ struct triplePointer {
 	arr_t object;
 };
 
+/*
+* Specific implementation of triplePointer for ciruclar buffer.
+* Offers methods for managing the attributes of the class.
+*/
 struct deviceCircularBuffer : triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> {
 	void setValues(int begin, int end, int size) {
 		setBegin(begin);
@@ -76,12 +87,6 @@ struct deviceCircularBuffer : triplePointer<circularBuffer<tripleContainer>, cir
 		int newBegin = (rdfStore.begin + step) % rdfStore.size;
 		setBegin(newBegin);
 	}
-	
-	void advanceEnd(int step){
-		int newEnd = (rdfStore.end + step) % rdfStore.size;
-		setEnd(newEnd);
-	}
-	
 				
 };
 
@@ -111,6 +116,7 @@ enum class JoinMask {NJ = -1, SBJ = 0, PRE = 1, OBJ = 2};
 //Section for defining operation classes
 class JoinOperation 
 {	
+	//TODO Modificare classe in modo che permetta la join di join
 	private:
 		mem_t<tripleContainer>** innerTable;
 		mem_t<tripleContainer>** outerTable;
@@ -205,42 +211,62 @@ class SelectOperation
 		}
 };
 
+std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int innerSize, tripleContainer* outerTable, int outerSize, JoinMask innerMask[3], JoinMask outerMask[3]);
+
+std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer*> d_selectQueries, 
+		deviceCircularBuffer d_pointer,
+		const int storeSize, 
+		std::vector<int>  arrs);
 
 class Query {
-	public:
+	protected:
 		std::vector<SelectOperation*> select;
 		std::vector<JoinOperation*> join;
 		deviceCircularBuffer windowPointer;
-		long int lastTimestamp;
 
+	public:
 		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, deviceCircularBuffer rdfPointer) {
 			this->join = join;
 			this->select = select;
 			this->windowPointer = rdfPointer;
 		}
 
-		std::vector<SelectOperation*> getSelect() {
-			return select;
-		}
-
-		std::vector<JoinOperation*> getJoin() {
-			return join;
-		}
-
-		virtual void advancePointer(int step) {
-			windowPointer.advanceEnd(step);
-		}
-
-		triplePointer<tripleContainer*, int*> getStorePointer() {
-			triplePointer<tripleContainer*, int*> pointer;
-			pointer.rdfStore = windowPointer.rdfStore.pointer;
-			pointer.subject = windowPointer.subject.pointer;
-			pointer.predicate = windowPointer.predicate.pointer;
-			pointer.object = windowPointer.object.pointer;
-			
-			return pointer;
+		virtual void setWindowEnd(int step) {
+			windowPointer.setEnd(step);
 		}
 		
+		/**
+		* Function for managing query execution
+		**/
+		//TODO Verificare se si puo migliorare
+		void startQuery() {
+			int storeSize =  windowPointer.rdfStore.getLength();			
+			std::vector<tripleContainer*> d_selectQueries;
+			std::vector<int> arrs;
+	
+			for (int i = 0; i < select.size(); i++) {
+				d_selectQueries.push_back(select[i]->getQuery()->data());
+				arrs.push_back(select[i]->getArr());
+			}
+	
+			std::vector<mem_t<tripleContainer>*> selectResults = rdfSelect(d_selectQueries, windowPointer, storeSize, arrs);
+
+			for (int i = 0; i < selectResults.size(); i++) {
+				select[i]->setResult(selectResults[i]);
+			}
+	
+	
+			for (int i = 0; i < join.size(); i++) {
+				mem_t<tripleContainer>* innerTable = *join[i]->getInnerTable();
+				mem_t<tripleContainer>* outerTable = *join[i]->getOuterTable();
+				std::vector<mem_t<tripleContainer>*>  joinResult = rdfJoin(innerTable->data(), innerTable->size(), outerTable->data(), outerTable->size(), join[i]->getInnerMask(), join[i]->getOuterMask());
+				join[i]->setInnerResult(joinResult[0]);
+				join[i]->setOuterResult(joinResult[1]);				
+			}
+	
+		}
+
+		//TODO modificare quando si sapra come utilizzare i risultati
 		void printResults() {
 			int i = 0;
 			for (auto op : select) {
@@ -263,20 +289,9 @@ class Query {
 					
 		}
 		
-		void setStartingTimestamp(long int timestamp) {
-			this->lastTimestamp = timestamp;
-		}
-
-		
-		virtual void launch() =0;
-		virtual bool isReady() =0;
-		
-		~Query() {}
+	
 };
 
-void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, 
-		deviceCircularBuffer d_pointer, 
-		const int storeSize);
 
 class CountQuery : public Query {
 	private:
@@ -284,7 +299,6 @@ class CountQuery : public Query {
 		int currentCount;
 
 	public:
-		void test() {};
 		CountQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
 			deviceCircularBuffer rdfPointer,
 			int count) : Query(select, join, rdfPointer) {
@@ -293,22 +307,19 @@ class CountQuery : public Query {
 				this->currentCount = 0;
 		}
 		
-		bool isReady() {
+		void incrementCount() {
 			this->currentCount++;
-			if (currentCount == count) {
-				currentCount = 0;
-				return true;
-			}
-			return false;
 		}
 		
-
-	
+		bool isReady() {
+			return (currentCount == count);
+		}
+		
 		void launch() {
-			std::cout << "starting windows is " << windowPointer.rdfStore.begin << " ending window is " << windowPointer.rdfStore.end << std::endl;
-			queryManager(getSelect(), getJoin(), windowPointer, count);
+			startQuery();
 			windowPointer.advanceBegin(count);
 			printResults();
+			currentCount = 0;
 		}
 		
 		~CountQuery() {}
@@ -319,108 +330,49 @@ class TimeQuery : public Query {
 		circularBuffer<long int> timestampPointer;
 		long int stepTime;
 		long int windowTime;
-		bool isFirst;
-
+		long int lastTimestamp;
+		
 	public:
-		void test() {};
 		TimeQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
 			deviceCircularBuffer rdfPointer, circularBuffer<long int> timestampPointer,
 			int windowTime, int stepTime) : Query(select, join, rdfPointer) {
 				this->stepTime = stepTime;
 				this->windowTime = windowTime;
 				this->lastTimestamp = 0;
-				this->isFirst = true;
 				this->timestampPointer = timestampPointer;
 		}
 		
-
-		void advancePointer(int step)  {
-			Query::advancePointer(step);
-			timestampPointer.end = (timestampPointer.end + step) % timestampPointer.size;
+		void setWindowEnd(int step)  {
+			Query::setWindowEnd(step);
+			timestampPointer.end = step;
 		}
 
-		
+		bool isReady(long int newTimestamp) {
+			return (lastTimestamp + windowTime < newTimestamp);
+		}
 
-		bool isReady() {
-			long int newTimestamp = timestampPointer.pointer[timestampPointer.end -1 ];
-			if (isFirst) {
-				std::cout << "last timestamp is " << lastTimestamp << " current is " << newTimestamp << std::endl;
-				if (lastTimestamp + windowTime <= newTimestamp) {
-					return true;
-				}
+		void setStartingTimestamp(long int timestamp) {
+			this->lastTimestamp = timestamp;
+		}
 
-			} else {
-				if (lastTimestamp + stepTime <= newTimestamp) {
-					return true;
-				}
-			}
+		void launch() {	
+			//Update new starting value of buffer
+			int newBegin = 0;
+			for(int i = timestampPointer.begin; i  != timestampPointer.end; i = (i + 1) % timestampPointer.size) {	
+				if (timestampPointer.pointer[i] > lastTimestamp) {
+					newBegin = i;
+					break;
+				}				
+			}				
+			windowPointer.setBegin(newBegin);
+			timestampPointer.begin = newBegin;
 			
-			return false;
-		}
-
-		long int* getTimestampPointer() {
-			return this->timestampPointer.pointer;
-		}
-
-		void launch() {
-			lastTimestamp += stepTime;
-			if (!isFirst) {
-				long int startingTime = lastTimestamp - (long int) windowTime;					
-				int newBegin = 0;
-
-				std::cout<< "comparing timestamp" << std::endl;
-				
-				std::cout<< "begin " << timestampPointer.begin << " end " << timestampPointer.end << std::endl;
-				if (timestampPointer.end < timestampPointer.begin) {
-					bool found = false;
-
-					for(int i = timestampPointer.begin; i < timestampPointer.size; i++) {
-						if (timestampPointer.pointer[i] > startingTime) {
-							found = true;
-							newBegin = i;
-							break;
-						}
-					}				
-
-					if (found == false) {
-						for(int i = 0; i < timestampPointer.end; i++) {
-							if (timestampPointer.pointer[i] > startingTime) {
-
-								newBegin = i;
-								break;
-							}				
-						}				
-					}
-
-				} else {
-					for (int i = timestampPointer.begin; i < timestampPointer.end; i++) {
-						if (timestampPointer.pointer[i] > startingTime) {
-							newBegin = i;
-							break;
-						}
-					}
-
-				}
-
-				windowPointer.setBegin(newBegin);
-				timestampPointer.begin = newBegin;
-
-				std::cout << "new begin is " << newBegin << std::endl;
-				
-			} else {
-				isFirst = false;
-			}	
-
-			
-			windowPointer.setEnd(windowPointer.rdfStore.end -1);
-
-			int diff = windowPointer.rdfStore.end - windowPointer.rdfStore.begin;
-			int currentSize = (diff >= 0 ? diff : windowPointer.rdfStore.size + diff); 
-			queryManager(getSelect(), getJoin(), windowPointer, currentSize);  
+			//Lancuh query and print results
+			startQuery();
 			printResults();
 			
-			windowPointer.setEnd(windowPointer.rdfStore.end + 1);
-
+			//Update window timestamp value
+			lastTimestamp += stepTime;
 		}
 
 		~TimeQuery() {}
@@ -429,7 +381,7 @@ class TimeQuery : public Query {
 
 
 
-class TripleGenerator {
+class QueryManager {
 	private:
 		int spanTime;
 		tripleContainer* source;
@@ -440,16 +392,18 @@ class TripleGenerator {
 		std::vector<int> predicateBuffer;
 		std::vector<int> objectBuffer;
 
-		std::vector<Query*> queries;
+		std::vector<TimeQuery> timeQueries;
+		std::vector<CountQuery> countQueries;
 		
 		circularBuffer<long int> timestampPointer;
 		deviceCircularBuffer devicePointer;
 
 	public:
-		TripleGenerator(tripleContainer* source, int srcSize, int spanTime,int buffSize)   {
+		QueryManager(tripleContainer* source, int srcSize, int spanTime,int buffSize)   {
 			this->spanTime = spanTime;
 			this->srcSize = srcSize;
 			this->source = source;
+			
 			long int* timestamp = (long int*) malloc(buffSize * sizeof(long int));
 			timestampPointer.pointer = timestamp;
 			timestampPointer.size = buffSize;
@@ -462,9 +416,13 @@ class TripleGenerator {
 		circularBuffer<long int> getTimestampPointer() {
 			return timestampPointer;
 		}
+				
+		void addTimeQuery(TimeQuery query) {
+			timeQueries.push_back(query);
+		}
 		
-		void addQuery(Query &query) {
-			queries.push_back(&query);
+		void addCountQuery(CountQuery query) {
+			countQueries.push_back(query);
 		}
 
 		
@@ -495,8 +453,6 @@ class TripleGenerator {
 				copyElements(devicePointer.rdfStore.end, 0, copySize);	
 			}
 			
-
-
 			devicePointer.setEnd(newEnd);
 
 			rdfBuffer.clear();
@@ -506,46 +462,44 @@ class TripleGenerator {
 		}
 		
 		void checkStep() {	
-			for (auto &query : queries)  {
-				query->advancePointer(1);
-				if (query->isReady()) {
-					int copySize = rdfBuffer.size();
+			for (auto &query : countQueries)  {
+				query.incrementCount();
+				if (query.isReady()) {
 					advanceDevicePointer();
-					
-					
-					
-					
-					query->launch();
+					query.setWindowEnd(devicePointer.rdfStore.end);			
+					query.launch();
 				}
-
 			}
 			
-
-
+			for (auto &query : timeQueries) {
+				if (query.isReady(timestampPointer.pointer[timestampPointer.end - 1])) {
+					advanceDevicePointer();
+					query.setWindowEnd(devicePointer.rdfStore.end - 1);		
+					query.launch();
+					query.setWindowEnd(1);
+				}				
+			}
 		}
 		
 		void start() {
-			
-			int counter = 0;
-
 			struct timeval startingTs;
 			gettimeofday(&startingTs, NULL);
 			long int ts = startingTs.tv_sec * 1000000 + startingTs.tv_usec;
 
-			for (auto &query : queries) {
-				
-				query->setStartingTimestamp(ts);
+			for (auto &query : timeQueries) {
+				query.setStartingTimestamp(ts);
 			}
 			
-			for (int i =0; i <srcSize; i++) {
+			usleep(1);
 			
-
+			for (int i =0; i <srcSize; i++) {
 				tripleContainer currentTriple  = source[i];
-				
-				
+		
 				struct timeval tp;
 				gettimeofday(&tp, NULL);
 				long int ms = tp.tv_sec * 1000000 + tp.tv_usec;
+
+
 				timestampPointer.pointer[timestampPointer.end] = ms;
 				timestampPointer.end = (timestampPointer.end + 1) % timestampPointer.size;
 				timestampPointer.begin = timestampPointer.end;
@@ -555,32 +509,24 @@ class TripleGenerator {
 				predicateBuffer.push_back(currentTriple.predicate);
 				objectBuffer.push_back(currentTriple.object);
 				
-				struct timeval begin;
-				gettimeofday(&begin, NULL);
 				
 				checkStep();
-
-				
-				
-			//	sleep(spanTime);
+			//	usleep(spanTime);
 			}
 			
-			
-			//***** REMOVE IN FINAL CODE: ONLY FOR TEST *****
-			int copySize = rdfBuffer.size();
-			
-			if (copySize != 0 ) {
-				advanceDevicePointer();
-				std::cout << "copy size is " << copySize << std::endl;		 
-				for (auto &query : queries)  {
-					query->advancePointer(copySize);
-					query->launch();
-				}
-							
-	
+			//TODO vedere se occorre tenere o no quest'ultima parte
+			//***** REMOVE IN FINAL CODE: ONLY FOR TEST (FORSE) *****
+			//DA OTTIMIZZARE POICHE VIENE LANCIATO ANCHE QUANDO NON SERVE!!
+			advanceDevicePointer();	 
+			for (auto &query : timeQueries)  {
+				query.setWindowEnd(devicePointer.rdfStore.end);
+				query.launch();
 			}
 			
-
+			for (auto &query :countQueries) {
+				query.setWindowEnd(devicePointer.rdfStore.end);
+				query.launch();
+			}
 			//***** END REMOVE PART-*****			
 		}
 
@@ -589,7 +535,7 @@ class TripleGenerator {
 };
 
 
-__global__ void unarySelect (circularBuffer<int> src, int* value, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size, int storeSize) {
+__global__ void unarySelect (circularBuffer<int> src, int* value, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (index >= (abs(src.end - src.begin +  src.size) % src.size) ) {
@@ -604,7 +550,7 @@ __global__ void unarySelect (circularBuffer<int> src, int* value, tripleContaine
 	}
 }
 
-__global__ void binarySelect (circularBuffer<int> src1, circularBuffer<int> src2, int* value1, int* value2, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size, int storeSize) {
+__global__ void binarySelect (circularBuffer<int> src1, circularBuffer<int> src2, int* value1, int* value2, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (index >= (abs(src1.end - src1.begin + src1.size) % src1.size) ) {
@@ -628,88 +574,74 @@ __global__ void binarySelect (circularBuffer<int> src1, circularBuffer<int> src2
 * @param d_selectQueries : the array in which are saved the select values
 * @param d_storePointer : pointer on the device to the triple store
 * @param storeSize : size of the triple store
-* @param comparatorMask : array of triple of comparator that are applied to the queries
-*			must be of the size of the d_selectQueries
 * @return a vector of type mem_t in which are saved the query results.
 */
 std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer*> d_selectQueries, 
 		deviceCircularBuffer d_pointer,
 		const int storeSize, 
-		std::vector<int*> comparatorMask,
 		std::vector<int>  arrs) 
 {
 	standard_context_t context;
+	
 	//Initialize elements
 	int querySize =  d_selectQueries.size();
 	std::vector<mem_t<tripleContainer>*> finalResults;
 	
 	int* currentSize;
 	cudaMalloc(&currentSize, sizeof(int));
-	int* zero = (int*) malloc(sizeof(int));
-	*zero = 0;
-
-	int* finalResultSize  = (int*) malloc(sizeof(int));
+	int zero = 0;
+	int finalResultSize  = 0;
 
 	//Cycling on all the queries
 	for (int i = 0; i < querySize; i++) {
 		//Save variable to pass to the lambda operator
 		tripleContainer* currentPointer = d_selectQueries[i];
-		
 		mem_t<tripleContainer>* currentResult = new mem_t<tripleContainer>(storeSize, context);
-
+		cudaMemcpy(currentSize, &zero, sizeof(int), cudaMemcpyHostToDevice);
+		
+		//INSERIRE DIVISIONE CORRETTA
 		int gridSize = 300;
 	        int blockSize = (storeSize / gridSize) + 1;
-		cudaMemcpy(currentSize, zero, sizeof(int), cudaMemcpyHostToDevice);
-			
+	        	
 		switch(arrs[i]) {
 
 			case(0): {
 				int* value = &(currentPointer->subject);
-
-				unarySelect<<<gridSize,blockSize>>>(d_pointer.subject, value, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
-
+				unarySelect<<<gridSize,blockSize>>>(d_pointer.subject, value, currentResult->data(), d_pointer.rdfStore, currentSize);
 				break;
 			}
 
 			case(1): {
 				int* value = &(currentPointer->predicate);
-			
-				unarySelect<<<gridSize,blockSize>>>(d_pointer.predicate, value, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
-
+				unarySelect<<<gridSize,blockSize>>>(d_pointer.predicate, value, currentResult->data(), d_pointer.rdfStore, currentSize);
 				break;
 			}
 						
 			case(2): {
                                 int* value = &(currentPointer->object);
 
-                                unarySelect<<<gridSize,blockSize>>>(d_pointer.object, value, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
+                                unarySelect<<<gridSize,blockSize>>>(d_pointer.object, value, currentResult->data(), d_pointer.rdfStore, currentSize);
                                 break;
 			}
 			
 			case(3): {
 				int* value1 = &(currentPointer->subject);
 				int* value2 = &(currentPointer->predicate);
-
-				binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.predicate, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
-
+				binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.predicate, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize);
 				break;
 			}
 
 			case(4): {
 				int* value1 = &(currentPointer->subject);
 				int* value2 = &(currentPointer->object);
-
-				binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.object, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
-
+				binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.object, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize);
 				break;
 			}
 
 			case(5): {
 				int* value1 = &(currentPointer->predicate);
 				int* value2 = &(currentPointer->object);
-
-				binarySelect<<<gridSize,blockSize>>>(d_pointer.predicate, d_pointer.object, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize, storeSize);
-
+				binarySelect<<<gridSize,blockSize>>>(d_pointer.predicate, d_pointer.object, value1, value2, currentResult->data(), d_pointer.rdfStore, currentSize);
 				break;
 			}
 						
@@ -719,20 +651,13 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
                                 break;
 			}
 			
-			
-			default: {
-				printf("ERROR ERRROR ERROR ERROR ERROR ERROR ERROR");
-			}
-
-
 		}
 				
-                cudaMemcpy(finalResultSize, currentSize, sizeof(int), cudaMemcpyDeviceToHost);
-		currentResult->setSize(*finalResultSize);
+                cudaMemcpy(&finalResultSize, currentSize, sizeof(int), cudaMemcpyDeviceToHost);
+		currentResult->setSize(finalResultSize);
 		finalResults.push_back(currentResult);
 	}
 	cudaFree(currentSize);
-	
 	return finalResults;
 }
 
@@ -771,42 +696,35 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 };
 
 
-//Computes inner < outer when doing join to find the elements that needs to be joined
-class TripleComparator
-{
-	private:
-		int maskA[3];
-		int maskB[3];
-	public:
-		TripleComparator(JoinMask innerMask[3], JoinMask outerMask[3]) {
-			maskA[0] = static_cast<int> (innerMask[0]);
-			maskA[1] = static_cast<int> (innerMask[1]);
-			maskA[2] = static_cast<int> (innerMask[2]);
-			
-			maskB[0] = static_cast<int> (outerMask[0]);
-			maskB[1] = static_cast<int> (outerMask[1]);
-			maskB[2] = static_cast<int> (outerMask[2]);			
-		}
-		
-		MGPU_DEVICE bool operator() (tripleContainer a, tripleContainer b) {			
-			int tripleA[3] = {a.subject, a.predicate, a.object};
-			int tripleB[3] = {b.subject, b.predicate, b.object};
 
-			if ((maskA[0] != -1) && (tripleA[maskA[0]] < tripleB[maskB[0]])) {
-				return true;
-			}
-		
-			if ((maskA[1] != -1) && (tripleA[maskA[0]] == tripleB[maskB[0]]) && (tripleA[maskA[1]] < tripleB[maskA[1]])) {
-				return true;
-			}
-			
-			if ((maskA[2] != -1) && (tripleA[maskA[0]] == tripleB[maskB[0]]) && (tripleA[maskA[1]] == tripleB[maskA[1]]) && (tripleA[maskA[2]] < tripleB[maskA[2]])) {
-				return true;
-			}
-		
-			return false;
-		}
+struct mask_t {
+	int subject;
+	int predicate;
+	int object;
 };
+ 
+__global__ void reorderTriple(tripleContainer* src, tripleContainer* dest, int maxSize, mask_t mask) {
+		
+	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
+ 
+	if (destIndex  >= maxSize)  {
+		return;
+	}
+
+	int triple[3] = {src[destIndex].subject, src[destIndex].predicate, src[destIndex].object};
+ 	tripleContainer destTriple = {triple[mask.subject], -1, -1};
+ 	
+ 	if (mask.predicate != -1) {
+ 		destTriple.predicate = triple[mask.predicate];
+ 	}
+ 	
+ 	
+ 	if (mask.object != -1) {
+	 	destTriple.object = triple[mask.object];
+ 	}
+ 	
+	dest[destIndex] = destTriple;
+}
 
 
 __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest, tripleContainer* outerSrc, tripleContainer* outerDest, int2* srcIndex, int maxSize) 
@@ -817,79 +735,56 @@ __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest,
 		return;
 	}
 	
-	int innerIndex = srcIndex[destIndex].x;
-	int outerIndex = srcIndex[destIndex].y;
+	//INVETERD INDEX DUE TO INVERTED JOIN PROBLEM (it should be inner = x, outer = y)
+	int innerIndex = srcIndex[destIndex].y;
+	int outerIndex = srcIndex[destIndex].x;
 	
 	innerDest[destIndex] = innerSrc[innerIndex];	
 	outerDest[destIndex] = outerSrc[outerIndex];
 }
 
+
+
 std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int innerSize, tripleContainer* outerTable, int outerSize, JoinMask innerMask[3], JoinMask outerMask[3])
 {
+	//TODO Migliorare la join nel reordering delle triple
 	standard_context_t context;
 	std::vector<mem_t<tripleContainer>*> finalResults;
 	
 	TripleSorter* innerSorter = new TripleSorter(innerMask);
-	TripleSorter* outerSorter = new TripleSorter(outerMask);
+
+	mask_t mask;
+	mask.subject = static_cast<int> (outerMask[0]);
+	mask.predicate = static_cast<int> (outerMask[1]);
+	mask.object = static_cast<int> (outerMask[2]);	
+	
+	//TODO SETTARE DIVISIONE
+	int gridSize = 64;
+	int blockSize = (outerSize/ gridSize) + 1;
+	mem_t<tripleContainer>* tempOuter = new mem_t<tripleContainer>(outerSize, context);
+	reorderTriple<<<gridSize, blockSize>>>(outerTable, tempOuter->data(), outerSize, mask);
 	
 	//Sort the two input array
 	mergesort(innerTable, innerSize , *innerSorter, context);
-	mergesort(outerTable, outerSize , *outerSorter, context);
+	mergesort(tempOuter->data(), outerSize , *innerSorter, context);
 	
-	TripleComparator* comparator = new TripleComparator(innerMask, outerMask);
-	
-	//BUG che mi costringe ad invertire inner con outer?
-	mem_t<int2> joinResult = inner_join(innerTable, innerSize, outerTable, outerSize,  *comparator, context);
+	mem_t<int2> joinResult = inner_join( innerTable, innerSize, tempOuter->data(), outerSize,  *innerSorter, context);
 		
 	mem_t<tripleContainer>* innerResults = new mem_t<tripleContainer>(joinResult.size(), context);
         mem_t<tripleContainer>* outerResults = new mem_t<tripleContainer>(joinResult.size(), context);
 	
 	//SETTARE DIVISIONE CORRETTA
-	//BIsogna settare come comporatrsi quando il valore della join supera i 129k risultati
-	int gridSize = 64;
-	int blockSize = (joinResult.size() / gridSize) + 1; 
+	//TODO BIsogna settare come comporatrsi quando il valore della join supera i 129k risultati
+	gridSize = 64;
+	blockSize = (joinResult.size() / gridSize) + 1; 
 	indexCopy<<<gridSize, blockSize>>>(innerTable, innerResults->data(), outerTable, outerResults->data(), joinResult.data(), joinResult.size());
 
 	finalResults.push_back(innerResults);
 	finalResults.push_back(outerResults);
-
+	cudaFree(tempOuter->data());
+	free(tempOuter);
+	
 	return finalResults;
-}
-
-
-
-/**
-* Function for managing query execution
-**/
-void queryManager(std::vector<SelectOperation*> selectOp, std::vector<JoinOperation*> joinOp, 
-		deviceCircularBuffer d_pointer, 
-		const int storeSize) {
-
-	std::vector<tripleContainer*> d_selectQueries;
-	std::vector<int*> comparatorMask;
-	std::vector<int> arrs;
-
-	for (int i = 0; i < selectOp.size(); i++) {
-		d_selectQueries.push_back(selectOp[i]->getQuery()->data());
-		arrs.push_back(selectOp[i]->getArr());
-	}
-	
-
-	std::vector<mem_t<tripleContainer>*> selectResults = rdfSelect(d_selectQueries, d_pointer, storeSize, comparatorMask, arrs);
-
-	for (int i = 0; i < selectResults.size(); i++) {
-		selectOp[i]->setResult(selectResults[i]);
-	}
-	
-	
-	for (int i = 0; i < joinOp.size(); i++) {
-		mem_t<tripleContainer>* innerTable = *joinOp[i]->getInnerTable();
-		mem_t<tripleContainer>* outerTable = *joinOp[i]->getOuterTable();
-		std::vector<mem_t<tripleContainer>*>  joinResult = rdfJoin(innerTable->data(), innerTable->size(), outerTable->data(), outerTable->size(), joinOp[i]->getInnerMask(), joinOp[i]->getOuterMask());
-		joinOp[i]->setInnerResult(joinResult[0]);
-		joinOp[i]->setOuterResult(joinResult[1]);				
-	}
-	
 }
 
 
@@ -916,6 +811,7 @@ std::vector<accuracy> stats(std::vector<type_t> input) {
 int main(int argc, char** argv) {
  
 		using namespace std;
+		
 		struct timeval beginPr, beginCu, beginEx, end;
 		gettimeofday(&beginPr, NULL);	
 		cudaDeviceReset();
@@ -925,8 +821,6 @@ int main(int argc, char** argv) {
 		deviceCircularBuffer windowPointer;
 
 
-		std::vector<float> timeCuVector;                
-		std::vector<float> timeExVector;
 
 
 		ifstream rdfStoreFile (argv[1]);
@@ -944,7 +838,7 @@ int main(int argc, char** argv) {
                 tripleContainer* h_rdfStore = (tripleContainer*) malloc(rdfSize);
 
 
-		TripleGenerator manager(h_rdfStore, fileLength, 1, BUFFER_SIZE);
+		
 
                 //read store from rdfStore
                 for (int i = 0; i <fileLength; i++) {
@@ -960,10 +854,10 @@ int main(int argc, char** argv) {
 
                 rdfStoreFile.close();
 
-                int N_CYCLE = 1;
+                int N_CYCLE = 100;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
-			
+			QueryManager manager(h_rdfStore, fileLength, 1, BUFFER_SIZE);
 			cudaMalloc(&windowPointer.rdfStore.pointer, BUFFER_SIZE * sizeof(tripleContainer));
 			cudaMalloc(&windowPointer.subject.pointer, BUFFER_SIZE * sizeof(int));
                         cudaMalloc(&windowPointer.predicate.pointer, BUFFER_SIZE * sizeof(int));
@@ -1021,47 +915,42 @@ int main(int argc, char** argv) {
 			joinOperations.push_back(&joinOp);
 			
 			int stepCount = 100000;
+			std::cout << "starting tmsp " << manager.getTimestampPointer().begin << std::endl;
+			/*TimeQuery count(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 5000, 5000);
+			manager.addTimeQuery(count);
 
-			TimeQuery count(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 10700, 10700);
-			manager.addQuery(count);
+
+			TimeQuery count5(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 7000, 7000);
+			manager.addTimeQuery(count5);*/
 			
-		/*	CountQuery count(selectOperations, joinOperations, windowPointer, 150000);
-			manager.addQuery(count);*/
+			CountQuery count2(selectOperations, joinOperations, windowPointer, 50000);
+			manager.addCountQuery(count2);
+			
+			
+			/*CountQuery count3(selectOperations, joinOperations, windowPointer, 50000);
+			manager.addCountQuery(count3);
+			
+			CountQuery count4(selectOperations, joinOperations, windowPointer, 34652);
+			manager.addCountQuery(count4);	*/		
 			
 			gettimeofday(&beginEx, NULL);	
 			
 			manager.start();
 
-			
-			/*//Retrive results from memory
-			std::vector<tripleContainer> finalInnerResults = from_mem(*joinOp.getInnerResult());
-			std::vector<tripleContainer> finalOuterResults = from_mem(*joinOp.getOuterResult());*/
+
 			
 			cudaDeviceSynchronize();
 			gettimeofday(&end, NULL);
 
-                      /*  std::vector<tripleContainer> selectResults = from_mem(*selectOp1.getResult());
-                        std::vector<tripleContainer> selectResults2 = from_mem(*selectOp2.getResult());*/
 
 			float exTime = (end.tv_sec - beginEx.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginEx.tv_usec) / 1000 ;
 			float prTime = (end.tv_sec - beginPr.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginPr.tv_usec) / 1000 ;
 			float cuTime = (end.tv_sec - beginCu.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginCu.tv_usec) / 1000 ;
 			
-			timeCuVector.push_back(cuTime);
-			timeExVector.push_back(exTime);
-			/*
-			//Print Results
-			cout << "first select result" << endl;
-			for (int i = 0; i < selectResults.size(); i++) {
-				cout << selectResults[i].subject << " " << selectResults[i].predicate << " "  << selectResults[i].object << endl; 
-			}*/
-			
 
 			
-			//Print current cycle results
-			/*cout <<"first Select Size " << selectResults.size() << endl;
-			cout << "second Select Size " << selectResults2.size() << endl;
-			cout << "join Size " << finalOuterResults.size() << endl;*/
+			timeCuVector.push_back(cuTime);
+
 						
 			cout << "Total time: " << prTime << endl;
 			cout << "Cuda time: " << cuTime << endl;
@@ -1075,20 +964,28 @@ int main(int argc, char** argv) {
 			cudaFree(windowPointer.rdfStore.pointer);
 		}
 
-/*	
+	
 		std::vector<float> statistics;
 		
 		statistics = stats<float, float>(timeCuVector);	
                 cout << "mean cuda time " << statistics[0] << endl;
                 cout << "variance cuda time " << statistics[1] << endl;
 
-                statistics = stats<float, float>(timeExVector);
+              /*  statistics = stats<long int, double>(timeExVector);
                 cout << "mean ex time " << statistics[0] << endl;
-                cout << "variance ex time " << statistics[1] << endl;
-*/
+                cout << "variance ex time " << statistics[1] << endl;*/
+
 
 		cout << "FINAL VALUE IS " << TEST_VALUE[0] << std::endl;
 		cout << "FINAL VALUE IS " << TEST_VALUE[1] << std::endl;
+		
+		long int sum = 0;
+		
+	/*	for (int i = 0; i < timeCuVector.size(); i++) {
+			std::cout<< "time are " << timeCuVector[i] << std::endl;
+		}*/
+		
+
 		
                 return 0;
 }

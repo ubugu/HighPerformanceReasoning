@@ -5,15 +5,15 @@
 #include "types.hxx"
 
 
-//Kernel for select with one element to compare
-__global__ void unarySelect (bufferPointer<int> src, int* value, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
+
+__global__ void unarySelect (circularBuffer<int> src, int* value, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= (abs(src.end - src.begin + BUF_LEN) % BUF_LEN) ) {
+	if (index >= (abs(src.end - src.begin +  src.size) % src.size) ) {
 		return;
 	}	
 
-	int newIndex = (src.begin + index) % BUF_LEN;
+	int newIndex = (src.begin + index) % src.size;
 	
 	if (src.pointer[newIndex] == (*value)) {
 		int add = atomicAdd(size, 1);
@@ -21,15 +21,14 @@ __global__ void unarySelect (bufferPointer<int> src, int* value, tripleContainer
 	}
 }
 
-//Kernel for select with two element to compare
-__global__ void binarySelect (bufferPointer<int> src1, bufferPointer<int> src2, int* value1, int* value2, tripleContainer* dest, bufferPointer<tripleContainer> store, int* size, int storeSize) {
+__global__ void binarySelect (circularBuffer<int> src1, circularBuffer<int> src2, int* value1, int* value2, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size, int storeSize) {
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (index >= (abs(src1.end - src1.begin + BUF_LEN) % BUF_LEN) ) {
+	if (index >= (abs(src1.end - src1.begin + src1.size) % src1.size) ) {
 		return;
 	}		
 
-	int newIndex = (src1.begin + index) % BUF_LEN;
+	int newIndex = (src1.begin + index) % src1.size;
 	if ((src1.pointer[newIndex] == (*value1)) && (src2.pointer[newIndex] == (*value2))) {
 		int add = atomicAdd(size, 1);
 		dest[add] = store.pointer[newIndex];
@@ -51,7 +50,7 @@ __global__ void binarySelect (bufferPointer<int> src1, bufferPointer<int> src2, 
 * @return a vector of type mem_t in which are saved the query results.
 */
 std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer*> d_selectQueries, 
-		devicePointer<bufferPointer<tripleContainer>, bufferPointer<int>> d_pointer,
+		deviceCircularBuffer d_pointer,
 		const int storeSize, 
 		std::vector<int*> comparatorMask,
 		std::vector<int>  arrs) 
@@ -144,7 +143,7 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 
 
 		}
-		
+				
                 cudaMemcpy(finalResultSize, currentSize, sizeof(int), cudaMemcpyDeviceToHost);
 		currentResult->setSize(*finalResultSize);
 		finalResults.push_back(currentResult);
@@ -153,4 +152,6 @@ std::vector<mem_t<tripleContainer>*> rdfSelect(const std::vector<tripleContainer
 	
 	return finalResults;
 }
+
+
 

@@ -7,13 +7,6 @@
 #include "types.hxx"
 
 
-/*
-* Join enum to define order and which element to join
-* NJ indicates a non-join value, so it is ignored during join and sorting
-* So that it improves performance avoiding uneecessary conditional expression
-*/
-enum class JoinMask {NJ = -1, SBJ = 0, PRE = 1, OBJ = 2};
-
 //Sorter for sorting the triple due to theorder defined by the sortMask
  class TripleSorter {
 	private:
@@ -85,6 +78,36 @@ class TripleComparator
 };
 
 
+
+struct mask_s {
+	int subject;
+	int predicate;
+	int object;
+};
+ 
+__global__ void reorderTriple(tripleContainer* src, tripleContainer* dest, int maxSize, mask_s mask) {
+		
+	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
+ 
+	if (destIndex  >= maxSize)  {
+		return;
+	}
+
+	int triple[3] = {src[destIndex].subject, src[destIndex].predicate, src[destIndex].object};
+ 	tripleContainer destTriple = {triple[mask.subject], -1, -1};
+ 	
+ 	if (mask.predicate != -1) {
+ 		destTriple.predicate = triple[mask.predicate];
+ 	}
+ 	
+ 	
+ 	if (mask.object != -1) {
+	 	destTriple.object = triple[mask.object];
+ 	}
+ 	
+	dest[destIndex] = destTriple;
+}
+
 __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest, tripleContainer* outerSrc, tripleContainer* outerDest, int2* srcIndex, int maxSize) 
 {
 	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -93,13 +116,13 @@ __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest,
 		return;
 	}
 	
-	//INVETERD INDEX DUE TO INVERTED JOIN PROBLEM (it should be inner = x, outer = y)
-	int innerIndex = srcIndex[destIndex].y;
-	int outerIndex = srcIndex[destIndex].x;
+	int innerIndex = srcIndex[destIndex].x;
+	int outerIndex = srcIndex[destIndex].y;
 	
 	innerDest[destIndex] = innerSrc[innerIndex];	
 	outerDest[destIndex] = outerSrc[outerIndex];
 }
+
 
 std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int innerSize, tripleContainer* outerTable, int outerSize, JoinMask innerMask[3], JoinMask outerMask[3])
 {
@@ -108,27 +131,44 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int in
 	
 	TripleSorter* innerSorter = new TripleSorter(innerMask);
 	TripleSorter* outerSorter = new TripleSorter(outerMask);
+	TripleComparator* comparator = new TripleComparator(innerMask, outerMask);
+
+	struct timeval beginCu, end;
+
+	mask_s mask;
+	mask.subject = static_cast<int> (outerMask[0]);
+	mask.predicate = static_cast<int> (outerMask[1]);
+	mask.object = static_cast<int> (outerMask[2]);	
+	int gridSize = 64;
+	int blockSize = (outerSize/ gridSize) + 1;
+	mem_t<tripleContainer>* tempOuter = new mem_t<tripleContainer>(outerSize, context);
+	reorderTriple<<<gridSize, blockSize>>>(outerTable, tempOuter->data(), outerSize, mask);
+	cudaDeviceSynchronize();
+
 	
 	//Sort the two input array
 	mergesort(innerTable, innerSize , *innerSorter, context);
-	mergesort(outerTable, outerSize , *outerSorter, context);
+	mergesort(tempOuter->data(), outerSize , *innerSorter, context);
 	
-	TripleComparator* comparator = new TripleComparator(innerMask, outerMask);
+	
 	
 	//BUG che mi costringe ad invertire inner con outer?
-	mem_t<int2> joinResult = inner_join(outerTable, outerSize, innerTable, innerSize,  *comparator, context);
+	mem_t<int2> joinResult = inner_join( innerTable, innerSize, tempOuter->data(), outerSize,  *innerSorter, context);
 		
 	mem_t<tripleContainer>* innerResults = new mem_t<tripleContainer>(joinResult.size(), context);
         mem_t<tripleContainer>* outerResults = new mem_t<tripleContainer>(joinResult.size(), context);
 	
 	//SETTARE DIVISIONE CORRETTA
 	//BIsogna settare come comporatrsi quando il valore della join supera i 129k risultati
-	int gridSize = 64;
-	int blockSize = (joinResult.size() / gridSize) + 1; 
+	gridSize = 64;
+	blockSize = (joinResult.size() / gridSize) + 1; 
 	indexCopy<<<gridSize, blockSize>>>(innerTable, innerResults->data(), outerTable, outerResults->data(), joinResult.data(), joinResult.size());
 
 	finalResults.push_back(innerResults);
 	finalResults.push_back(outerResults);
 
+	cudaFree(tempOuter->data());
 	return finalResults;
 }
+
+
