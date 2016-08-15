@@ -854,7 +854,7 @@ int main(int argc, char** argv) {
 
                 rdfStoreFile.close();
 
-                int N_CYCLE = 100;
+                int N_CYCLE = 75;
 		for (int i = 0; i < N_CYCLE; i++) {
 			gettimeofday(&beginCu, NULL);
 			QueryManager manager(h_rdfStore, fileLength, 1, BUFFER_SIZE);
@@ -981,9 +981,9 @@ int main(int argc, char** argv) {
 		
 		long int sum = 0;
 		
-	/*	for (int i = 0; i < timeCuVector.size(); i++) {
+		for (int i = 0; i < timeCuVector.size(); i++) {
 			std::cout<< "time are " << timeCuVector[i] << std::endl;
-		}*/
+		}
 		
 
 		
