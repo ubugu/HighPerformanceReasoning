@@ -16,7 +16,6 @@ using google::dense_hash_map;
 
 //TODO 
 //VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
-int TEST_VALUE[2]  {0, 0};
 int VALUE = 0;
 std::vector<float> timeCuVector;                
 std::vector<long int> timeExVector;
@@ -775,6 +774,7 @@ struct mask_t {
 	int object;
 };
  
+
 __global__ void reorderTriple(tripleContainer* src, tripleContainer* dest, int maxSize, mask_t mask) {
 		
 	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -820,17 +820,17 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int in
 	mask.object = static_cast<int> (outerMask[2]);	
 	
 	//TODO SETTARE DIVISIONE
-	int gridSize = 64;
+	int gridSize = 124;
 	int blockSize = (outerSize/ gridSize) + 1;
 	mem_t<tripleContainer>* tempOuter = new mem_t<tripleContainer>(outerSize, context);
 
 	reorderTriple<<<gridSize, blockSize>>>(outerTable, tempOuter->data(), outerSize, mask);
 	
 	//Sort the two input array
-	mergesort(innerTable, innerSize , *innerSorter, context);
-	mergesort(tempOuter->data(), outerSize , *innerSorter, context);
+	mergesort<launch_params_t<128, 2>>(innerTable, innerSize , *innerSorter, context);
+	mergesort<launch_params_t<128, 2>>(tempOuter->data(), outerSize , *innerSorter, context);
 	
-	mem_t<int2> joinResult = inner_join( innerTable, innerSize, tempOuter->data(), outerSize,  *innerSorter, context);
+	mem_t<int2> joinResult = inner_join<launch_params_t<128,2>>( innerTable, innerSize, tempOuter->data(), outerSize,  *innerSorter, context);
 		
 	std::cout << "JOIN RESULT SIZE IS " << joinResult.size() << std::endl;
 	
@@ -910,7 +910,7 @@ int main(int argc, char** argv) {
 
                 rdfStoreFile.close();
 
-                int N_CYCLE = 100;
+                int N_CYCLE = 1;
 		for (int i = 0; i < N_CYCLE; i++) {
 			
 			gettimeofday(&beginCu, NULL);
@@ -1040,9 +1040,7 @@ int main(int argc, char** argv) {
                 cout << "variance ex time " << statistics[1] << endl;*/
 
 
-		cout << "FINAL VALUE IS " << VALUE << std::endl;
-		cout << "FINAL VALUE IS " << TEST_VALUE[0] << std::endl;
-		cout << "FINAL VALUE IS " << TEST_VALUE[1] << std::endl;
+		cout << "FINAL VALUE IS " << VALUE << std::endl;;
 		
 		long int sum = 0;
 		

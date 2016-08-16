@@ -1,13 +1,17 @@
 TODO
 
+-Implementare projection su GPU
 
--Riscrivere bene metodo query manager
+-Implementare join di join
 
--Gestire mergesort e join con elementi che richiedono molta memoria shared
+-implementare risultato finale nel caso di più join
 
--Usare in modo consono thread e block nella funzione di copia del join
+-migliorare reordering delle triple
 
--Eliminare switch
+-Settare divisione block/thread 
 
--Contattare moderngpu per fixare errori join (scambio inner/outer e join su elementi differenti)
+-Shared memory per gpu locale
+
+-Ottimizzazzione generale
+
 
