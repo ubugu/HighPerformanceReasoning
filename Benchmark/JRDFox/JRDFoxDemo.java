@@ -42,12 +42,13 @@ public class JRDFoxDemo {
 		br.close();
 		int totalRes = 0;
 		System.out.println("Elements "  + statements.size());
-		int N_CYCLES = 1;
+		int N_CYCLES = 10;
 
 		List timeVec = new LinkedList();
 
 		for (int i =0; i <N_CYCLES; i++)
 		{
+			System.out.println(i);
 			List<Individual> stmt = new LinkedList<Individual>();
 			double start = System.nanoTime();
 			for (int k=0; k <statements.size(); k++)
@@ -60,14 +61,11 @@ public class JRDFoxDemo {
 		                        DataStore store = new DataStore(DataStore.StoreType.Sequential);
 
 	                        	store.addTriples(stmt.toArray(new Individual[stmt.size()]));
-					System.out.println("Number of tuples after import: " + store.getTriplesCount());
-
 					Prefixes prefixes = Prefixes.DEFAULT_IMMUTABLE_INSTANCE;
 					TupleIterator tupleIterator = store.compileQuery("SELECT DISTINCT * WHERE{ ?s ?p  <http://example.org/int/99> . <http://example.org/int/0> ?p ?o }", prefixes, new Parameters());
 
-					System.out.println("EVALUATING");
 					totalRes += evaluateAndPrintResults(prefixes, tupleIterator);
-					// When no longer needed, the iterator should be disposed so that all related resources are released.
+
 					tupleIterator.dispose();
 
 					stmt.clear();
@@ -100,31 +98,18 @@ public class JRDFoxDemo {
                 variance = variance - mean * mean;
 
 
+
                 System.out.println("Execution Variance is " + variance);
                 System.out.println("Execution Mean is " + mean);
+
 
 	}
 
 	public static int evaluateAndPrintResults(Prefixes prefixes, TupleIterator tupleIterator) throws JRDFoxException {
 		int numberOfRows = 0;
-		System.out.println();
-		System.out.println("=======================================================================================");
-		int arity = tupleIterator.getArity();
-		// We iterate trough the result tuples
-		for (long multiplicity = tupleIterator.open(); multiplicity != 0; multiplicity = tupleIterator.advance()) {
-			// We iterate trough the terms of each tuple
-			for (int termIndex = 0; termIndex < arity; ++termIndex) {
-				if (termIndex != 0)
-					System.out.print("  ");
-				Resource resource = tupleIterator.getResource(termIndex);
-			}
+		for (long multiplicity = tupleIterator.open(); multiplicity != 0; multiplicity = tupleIterator.advance())  {
 			++numberOfRows;
 		}
-		System.out.println("---------------------------------------------------------------------------------------");
-		System.out.println("  The number of rows returned: " + numberOfRows);
-		System.out.println("=======================================================================================");
-		System.out.println();
-
 		return numberOfRows;
 	}
 }

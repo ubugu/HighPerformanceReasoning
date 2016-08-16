@@ -62,7 +62,7 @@ public class StreamBench
 		List<BindingSet> resultList = null;
 		int resultLen = 0;
 		for (int i =0; i < N_CYCLES;  i++) {
-
+			System.out.println(i);
 			double start = System.nanoTime();
 			List<SimpleStatement> currentStm = new LinkedList<SimpleStatement>();
 			for (int k = 0; k < statements.size(); k++)
@@ -72,7 +72,6 @@ public class StreamBench
 				currentStm.add(statements.get(k));
 
 				if (currentStm.size() == 50000  ) {
-					System.out.println("launched!");
 	        	       		Repository repo = new SailRepository(new MemoryStore());
         		       		repo.initialize();
 		        	        RepositoryConnection con = repo.getConnection();
@@ -84,8 +83,9 @@ public class StreamBench
 				    	resultList = QueryResults.asList(result);
 
 					resultLen += resultList.size();
-					System.out.println("result size is " + resultList.size());
 					currentStm.clear();
+					System.out.println(resultLen);
+					break;
 				}
 			}
 
