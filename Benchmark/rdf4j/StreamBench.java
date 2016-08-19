@@ -30,7 +30,7 @@ public class StreamBench
 
       	try {
 		int FILE_LENGHT = 302924;
-                File file =  new File("../rdfStore/str500.txt");
+                File file =  new File("../../rdfStore/str500.txt");
 		List<SimpleStatement> statements = new ArrayList<SimpleStatement>();
 
 		FileInputStream fis = new FileInputStream(file);
@@ -77,7 +77,7 @@ public class StreamBench
 		        	        RepositoryConnection con = repo.getConnection();
 
 					con.add(currentStm);
-					String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/" + (99) + "> . <http://example.org/int/"  + 0  +  "> ?p ?o }";
+					String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/" + (99) + "> }";
 					TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 				    	TupleQueryResult result = tupleQuery.evaluate();
 				    	resultList = QueryResults.asList(result);
@@ -92,6 +92,10 @@ public class StreamBench
 			double time = System.nanoTime() - start;
 			double duration = new Double (time / (double) 1000000);
 			timeVec.add(duration);
+		}
+		
+		for (int i =0; i < resultList.size(); i++) {
+			System.out.println(resultList.get(i));
 		}
 
 		double mean = 0;

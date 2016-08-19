@@ -57,26 +57,11 @@ struct triplePointer {
 	arr_t object;
 };
 
-
-
-
-struct RowInterface {
-	size_t element[0];
-
-};
-
-
 template <int N>
-struct Row : public RowInterface 
+struct Row
 {
         size_t element[N];
-        
-        size_t& getElement() {
-        	return element[N];
-        }
 };
-
-
 
 struct Binding {
 	size_t* pointer;
@@ -248,71 +233,6 @@ __global__ void unarySelect (circularBuffer<tripleContainer> src, int target, in
 			}
 		}
 
-
-
-class SelectOperationInteface {
-	protected:
-		mem_t<tripleContainer>* query;
-		Binding* result;
-		int arr;
-		std::vector<std::string> variables;
-
-	public:
-		SelectOperationInteface (mem_t<tripleContainer>* query, SelectArr arr, std::string variable) {
-			this->query = query;	
-			this->arr = static_cast<int> (arr);
-			separateWords(variable, variables, ' ');
-		};
-
-		int getArr() {
-			return this-> arr;
-		}
-			
-		mem_t<tripleContainer>* getQuery() {
-			return this->query;
-		};
-		                                                                            
-		
-		void setResult(Binding* result) {
-			this->result = result;
-		};
-		
-		Binding* getResult() {
-			return result;
-		};
-		
-		std::vector<std::string> getVariables() {
-			return variables;
-		};
-		
-		Binding** getResultAddress() {
-			return &result;
-		}
-
-
-		
-
-
-
-
-
-		/*
-		* Make multiple select query, with specified comparison condition,
-		* on a triple store. Both queries and the store are supposed to 
-		* be already on the device. 
-		* 
-		* @param d_selectQueries : the array in which are saved the select values
-		* @param d_storePointer : pointer on the device to the triple store
-		* @param storeSize : size of the triple store
-		* @return a vector of type mem_t in which are saved the query results.
-		*/
-		void rdfSelect(deviceCircularBuffer d_pointer, const int storeSize) 
-		{	
-			
-		}
-
-
-};
 
 
 
@@ -545,8 +465,8 @@ struct mask_t {
 	int object;
 };
  
-template<typename ttype>
-__global__ void reorderTriple(ttype* src, tripleContainer* dest, int maxSize, mask_t mask) {
+
+__global__ void reorderTriple(tripleContainer* src, tripleContainer* dest, int maxSize, mask_t mask) {
 		
 	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
  
@@ -576,11 +496,7 @@ __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest,
 }
 
 
-template<typename ty>
 
-void printT(ty* p) {
-	std::cout << sizeof(ty) << std::endl;
-}
 
 
 std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outerTable, std::vector<std::string> joinMask)
@@ -589,21 +505,16 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outer
 	standard_context_t context;
 	std::vector<mem_t<tripleContainer>*> finalResults;
 	
-
-	std::cout << "TESTING ROW " << std::endl;
 	
-	RowInterface* test1 = new Row<4>();
+	std::cout << "pointe test" << std::endl;
 	
-	Row<4>* test2 = new Row<4>();
+	std::cout << "original pointer is " << innerTable->pointer << std::endl;
 	
-	std::cout << "BOG " << sizeof(*test1) << " should be " << sizeof(*test2) << " otehr " << sizeof(*test2)<< std::endl;
+	Row<2>* testP = static_cast<Row<2>*> (innerTable->pointer);
 	
-	printT(test1);
-	printT(test2);
+	std::cout << "casted pointer is " << testP << std::endl;
 	
-	test1 = static_cast<Row<4>*>(test1);
-	
-	printT( static_cast<Row<4>*>(test1));
+	std::cout << "second row is " << testP + 1 << std::endl;
 	
 	
 /*	std::cout << "LAUNCH MEGER " << std::endl;	
@@ -1168,16 +1079,16 @@ int main(int argc, char** argv) {
 
 			//Creat operation object to pass to query manager
 			SelectOperation  selectOp1(&d_queryVector1, arr1, "?s ?p");
-			SelectOperation  selectOp2(&d_queryVector2, arr2, "?p ?o");
+		//	SelectOperation  selectOp2(&d_queryVector2, arr2, "?p ?o");
 		
-			JoinOperation  joinOp(selectOp1.getResultAddress(), selectOp2.getResultAddress(), "?p");
+		//	JoinOperation  joinOp(selectOp1.getResultAddress(), selectOp2.getResultAddress(), "?p");
 		
 			std::vector<SelectOperation*> selectOperations;
 			std::vector<JoinOperation*> joinOperations;
 		
 			selectOperations.push_back(&selectOp1);
-			selectOperations.push_back(&selectOp2);
-			joinOperations.push_back(&joinOp);
+		//	selectOperations.push_back(&selectOp2);
+		//	joinOperations.push_back(&joinOp);
 			
 			int stepCount = 100000;
 			//std::cout << "starting tmsp " << manager.getTimestampPointer().begin << std::endl;
