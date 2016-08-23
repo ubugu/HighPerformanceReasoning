@@ -266,6 +266,107 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(tripleContainer* innerTable, int in
 }
 
 
+
+/*
+WORKING VERSION OF JOIN, NEED TO BE IMPLEMENTED 
+struct mask_t {
+	int subject;
+	int predicate;
+	int object;
+};
+ 
+
+__global__ void reorderTriple(tripleContainer* src, tripleContainer* dest, int maxSize, mask_t mask) {
+		
+	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
+ 
+	if (destIndex  >= maxSize)  {
+		return;
+	}
+
+	size_t triple[3] = {src[destIndex].subject, src[destIndex].predicate, src[destIndex].object};
+
+	dest[destIndex] = {triple[mask.subject], triple[mask.predicate], triple[mask.object]};
+}
+
+
+__global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest, tripleContainer* outerSrc, tripleContainer* outerDest, int2* srcIndex, int maxSize) 
+{
+	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
+ 
+	if (destIndex  >= maxSize)  {
+		return;
+	}
+	
+	int innerIndex = srcIndex[destIndex].x;
+	int outerIndex = srcIndex[destIndex].y;
+	
+	innerDest[destIndex] = innerSrc[innerIndex];	
+	outerDest[destIndex] = outerSrc[outerIndex];
+}
+
+
+
+
+
+std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outerTable, std::vector<std::string> joinMask)
+{
+	//TODO Migliorare la join nel reordering delle triple
+	standard_context_t context;
+	std::vector<mem_t<tripleContainer>*> finalResults;
+	
+		
+	
+/*
+	
+
+
+	mask_t mask;
+	mask.subject = static_cast<int> (outerMask[0]);
+	mask.predicate = static_cast<int> (outerMask[1]);
+
+	mask.object = static_cast<int> (outerMask[2]);	
+	
+	//TODO SETTARE DIVISIONE
+	int gridSize = 124;
+	int blockSize = (outerSize/ gridSize) + 1;
+	mem_t<tripleContainer>* tempOuter = new mem_t<tripleContainer>(outerSize, context);
+
+	reorderTriple<<<gridSize, blockSize>>>(outerTable, tempOuter->data(), outerSize, mask);
+
+
+	
+	std::cout << "LAUNCH MEGER " << std::endl;
+
+	//Sort the two input array
+	mergesort<launch_params_t<128, 2>>(d_iter, innerTable->height, *innerSorter, context);
+	exit(1);
+//	mergesort<launch_params_t<128, 2>>(outerTable->pointer, outerSize , *innerSorter, context);
+/*	
+	mem_t<int2> joinResult = inner_join<launch_params_t<128,2>>( innerTable, innerSize, tempOuter->data(), outerSize,  *innerSorter, context);
+		
+	std::cout << "JOIN RESULT SIZE IS " << joinResult.size() << std::endl;
+	
+	mem_t<tripleContainer>* innerResults = new mem_t<tripleContainer>(joinResult.size(), context);
+        mem_t<tripleContainer>* outerResults = new mem_t<tripleContainer>(joinResult.size(), context);
+	
+	//SETTARE DIVISIONE CORRETTA
+	//TODO BIsogna settare come comporatrsi quando il valore della join supera i 129k risultati
+	gridSize = 64;
+	blockSize = (joinResult.size() / gridSize) + 1; 
+	indexCopy<<<gridSize, blockSize>>>(innerTable, innerResults->data(), tempOuter->data(), outerResults->data(), joinResult.data(), joinResult.size());
+
+	finalResults.push_back(innerResults);
+	finalResults.push_back(outerResults);
+	cudaFree(tempOuter->data());
+	free(tempOuter);
+	
+	return finalResults;
+}
+
+*/
+
+
 //Section for defining operation classes
 class JoinOperation 
 {

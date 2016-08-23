@@ -57,11 +57,6 @@ struct triplePointer {
 	arr_t object;
 };
 
-template <int N>
-struct Row
-{
-        size_t element[N];
-};
 
 struct Binding {
 	size_t* pointer;
@@ -505,34 +500,10 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outer
 	standard_context_t context;
 	std::vector<mem_t<tripleContainer>*> finalResults;
 	
+		
 	
-	std::cout << "pointe test" << std::endl;
+/*
 	
-	std::cout << "original pointer is " << innerTable->pointer << std::endl;
-	
-	Row<2>* testP = static_cast<Row<2>*> (innerTable->pointer);
-	
-	std::cout << "casted pointer is " << testP << std::endl;
-	
-	std::cout << "second row is " << testP + 1 << std::endl;
-	
-	
-/*	std::cout << "LAUNCH MEGER " << std::endl;	
-	int mask[3] = {1, -1, -1};
-	
-	Sorter* innerSorter = new Sorter(mask);
-	
-	MyIterator* iter = new MyIterator(innerTable->pointer, innerTable->width);
-
-	MyIterator* d_iter;
-	cudaMalloc(&d_iter, sizeof(iter));
-	cudaMemcpy(d_iter, iter, sizeof(iter), cudaMemcpyHostToDevice);
-	
-	//std::cout << "SIZE IS " << innerTable->height << std::endl;
-	
-/*	innerMask[0] = ;
-	innerMask[1] = ;
-	innerMask[2] = ;
 
 
 	mask_t mask;

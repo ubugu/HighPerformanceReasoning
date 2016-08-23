@@ -77,7 +77,7 @@ public class StreamBench
 		        	        RepositoryConnection con = repo.getConnection();
 
 					con.add(currentStm);
-					String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/" + (99) + "> }";
+					String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/99> .  <http://example.org/int/0> ?p ?o }";
 					TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 				    	TupleQueryResult result = tupleQuery.evaluate();
 				    	resultList = QueryResults.asList(result);
