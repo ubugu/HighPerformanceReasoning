@@ -8,9 +8,10 @@
 #include <sys/time.h>
 #include <sparsehash/dense_hash_map>
 
+
+
 using namespace mgpu;
 using google::dense_hash_map;
-
 
 //TODO implementare la projection su gpu
 
@@ -20,7 +21,8 @@ int VALUE = 0;
 std::vector<float> timeCuVector;                
 std::vector<long int> timeExVector;
 bool isLaunched = false;
-//** END TESTING ***//
+//**END TESTING***//
+
 
 //struct to contains a single triple with int type.
 struct tripleContainer {
@@ -46,17 +48,11 @@ struct circularBuffer {
 	int getLength() {
 		return (abs(end - begin + size) % size);
 	}
+	
+	void advanceBegin(int step){
+		begin = (begin + step) % size;
+	}	
 };
-
-//Struct for containing the pointer to an rdf store (divided into subject predicate and object) 
-template<typename rdf_t, typename arr_t>
-struct triplePointer {
-	rdf_t rdfStore;
-	arr_t subject;
-	arr_t predicate;
-	arr_t object;
-};
-
 
 struct Binding {
 	size_t* pointer;
@@ -75,45 +71,6 @@ struct Binding {
 	}
 };
 
-
-/*
-* Specific implementation of triplePointer for ciruclar buffer.
-* Offers methods for managing the attributes of the class.
-*/
-struct deviceCircularBuffer : triplePointer<circularBuffer<tripleContainer>, circularBuffer<size_t>> {
-	void setValues(int begin, int end, int size) {
-		setBegin(begin);
-		setEnd(end);
-		setSize(size);
-	}	
-
-	void setBegin(int begin) {
-		rdfStore.begin = begin;
-		subject.begin = begin;
-		predicate.begin = begin;
-		object.begin = begin;
-	}
-	
-	void setEnd(int end) {
-		rdfStore.end = end;
-		subject.end = end;
-		predicate.end = end;
-		object.end = end;
-	}
-	
-	void setSize(int size) {
-		rdfStore.size = size;
-		subject.size = size;
-		predicate.size = size;
-		object.size = size;
-	}
-	
-	void advanceBegin(int step){
-		int newBegin = (rdfStore.begin + step) % rdfStore.size;
-		setBegin(newBegin);
-	}
-				
-};
 
 int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
 	const size_t zeroIndex = 0;
@@ -187,46 +144,49 @@ enum class SelectArr { S = 0, P = 1, O = 2, SP = 3, SO = 4, PO = 5, SPO = 6};
 
 
 
-__global__ void unarySelect (circularBuffer<tripleContainer> src, int target, int first, int second, size_t* value, size_t* dest, int width, int* size) {
+__global__ void unarySelect (circularBuffer<tripleContainer> src, int target_pos, int first_pos, int second_pos, size_t* value, size_t* dest, int width, int* size) {
 
-			int index = blockIdx.x * blockDim.x + threadIdx.x;
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-			if (index >= (abs(src.end - src.begin +  src.size) % src.size) ) {
-				return;
-			}	
+	if (index >= (abs(src.end - src.begin +  src.size) % src.size) ) {
+		return;
+	}	
 
-			int newIndex = (src.begin + index) % src.size;
-	
-			size_t temp[3] = {src.pointer[newIndex].subject, src.pointer[newIndex].predicate, src.pointer[newIndex].object};
-	
-			if (temp[target] == (*value)) {
-				int add = atomicAdd(size, 1);
-				size_t* dest_p = (size_t*) (dest + add * width) ;
+	int newIndex = (src.begin + index) % src.size;
 
+	size_t temp[3] = {src.pointer[newIndex].subject, src.pointer[newIndex].predicate, src.pointer[newIndex].object};
 
+	if (temp[target_pos] == (*value)) {
+		int add = atomicAdd(size, 1);
+		size_t* dest_p = (size_t*) (dest + add * width) ;
 
-				*dest_p = temp[first];
-				*(dest_p + 1) = temp[second];
+		*dest_p = temp[first_pos];
+		*(dest_p + 1) = temp[second_pos];
+
+	}
+}
+
 		
-			}
+
+__global__ void binarySelect (circularBuffer<tripleContainer> src, int target_pos, int target_pos2, int dest_pos, size_t* value, size_t* value2, size_t* dest, int width, int* size) {
+
+		int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+		if (index >= (abs(src.end - src.begin +  src.size) % src.size) ) {
+			return;
+		}	
+
+		int newIndex = (src.begin + index) % src.size;
+
+		size_t temp[3] = {src.pointer[newIndex].subject, src.pointer[newIndex].predicate, src.pointer[newIndex].object};
+
+		if ((temp[target_pos] == (*value)) && (temp[target_pos2] == (*value2))) {
+			int add = atomicAdd(size, 1);
+			size_t* dest_p = (size_t*) (dest + add * width) ;
+
+			*dest_p = temp[dest_pos];	
 		}
-
-
-		__global__ void binarySelect (circularBuffer<size_t> src1, circularBuffer<size_t> src2, size_t* value1, size_t* value2, tripleContainer* dest, circularBuffer<tripleContainer> store, int* size) {
-
-			int index = blockIdx.x * blockDim.x + threadIdx.x;
-		
-			if (index >= (abs(src1.end - src1.begin + src1.size) % src1.size) ) {
-				return;
-			}		
-
-			int newIndex = (src1.begin + index) % src1.size;
-			if ((src1.pointer[newIndex] == (*value1)) && (src2.pointer[newIndex] == (*value2))) {
-				int add = atomicAdd(size, 1);
-				dest[add] = store.pointer[newIndex];
-		
-			}
-		}
+}
 
 
 
@@ -235,16 +195,17 @@ class SelectOperation
 {
 	private:
 		mem_t<tripleContainer>* query;
+		std::vector<size_t> constants;
 		Binding* result;
 		int arr;
 		std::vector<std::string> variables;
 
 	public:
-		SelectOperation(mem_t<tripleContainer>* query, SelectArr arr, std::string variable) {
+	/*	SelectOperation(mem_t<tripleContainer>* query, SelectArr arr, std::string variable) {
 			this->query = query;	
 			this->arr = static_cast<int> (arr);
 			separateWords(variable, variables, ' ');
-		};
+		};*/
 
 		int getArr() {
 			return this-> arr;
@@ -288,7 +249,7 @@ class SelectOperation
 		* @param storeSize : size of the triple store
 		* @return a vector of type mem_t in which are saved the query results.
 		*/
-		void rdfSelect(deviceCircularBuffer d_pointer, const int storeSize) 
+		void rdfSelect(circularBuffer<tripleContainer> d_pointer, const int storeSize) 
 		{	
 			//Initialize elements	
 			int* d_resultSize;
@@ -308,13 +269,13 @@ class SelectOperation
 
 				case(0): {
 					size_t* value = &(query->subject);
-					unarySelect<<<gridSize,blockSize>>>(d_pointer.rdfStore, 0, 1, 2, value, result->pointer, result->width, d_resultSize);
+					unarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 1, 2, value, result->pointer, result->width, d_resultSize);
 					break;
 				}
 
 				case(1): {
 					size_t* value = &(query->predicate);
-					unarySelect<<<gridSize,blockSize>>>(d_pointer.rdfStore,  1, 0, 2, value, result->pointer, result->width, d_resultSize);
+					unarySelect<<<gridSize,blockSize>>>(d_pointer,  1, 0, 2, value, result->pointer, result->width, d_resultSize);
 					break;
 				}
 					
@@ -322,7 +283,7 @@ class SelectOperation
 				
 			                size_t* value = &(query->object);
 	
-			                unarySelect<<<gridSize,blockSize>>>(d_pointer.rdfStore,  2, 0, 1, value, result->pointer, result->width, d_resultSize);
+			                unarySelect<<<gridSize,blockSize>>>(d_pointer,  2, 0, 1, value, result->pointer, result->width, d_resultSize);
 			             
 			                break;
 				}
@@ -355,7 +316,6 @@ class SelectOperation
 				}*/
 		
 			}
-			cudaDeviceSynchronize();
 	
 	
 			cudaMemcpy(&h_resultSize, d_resultSize, sizeof(int), cudaMemcpyDeviceToHost);
@@ -554,17 +514,17 @@ class Query {
 	protected:
 		std::vector<SelectOperation*> select;
 		std::vector<JoinOperation*> join;
-		deviceCircularBuffer windowPointer;
+		circularBuffer<tripleContainer> windowPointer;
 
 	public:
-		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, deviceCircularBuffer rdfPointer) {
+		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, circularBuffer<tripleContainer> rdfPointer) {
 			this->join = join;
 			this->select = select;
 			this->windowPointer = rdfPointer;
 		}
 
 		virtual void setWindowEnd(int step) {
-			windowPointer.setEnd(step);
+			windowPointer.end = step;
 		}
 		
 		/**
@@ -572,14 +532,14 @@ class Query {
 		**/
 		//TODO Verificare se si puo migliorare
 		void startQuery() {
-			int storeSize =  windowPointer.rdfStore.getLength();			
+			int storeSize =  windowPointer.getLength();			
 			
 			for (auto op : select) {
 				op->rdfSelect(windowPointer, storeSize);
 			}
 
 		
-			
+			/*
 			
 	
 			for (int i = 0; i < join.size(); i++) {
@@ -587,15 +547,14 @@ class Query {
 				Binding* outerTable = join[i]->getOuterTable();
 				std::vector<mem_t<tripleContainer>*>  joinResult = rdfJoin(innerTable, outerTable, join[i]->getJoinMask());
 			/*	join[i]->setInnerResult(joinResult[0]);
-				join[i]->setOuterResult(joinResult[1]);	*/		
-			}
+				join[i]->setOuterResult(joinResult[1]);			
+			}*/
 			
-			exit(1);
 	
 		}
 
 		//TODO modificare quando si sapra come utilizzare i risultati
-		void printResults(dense_hash_map<size_t, std::string> map) {
+		void printResults(dense_hash_map<size_t, std::string> mapH) {
 
 			int w = 0;
 			for (auto op : select) {
@@ -609,14 +568,13 @@ class Query {
 				std::cout << "size is " << d_result->height << std::endl;
 				std::cout << "width is " << d_result->width << std::endl;
 				
-				/*for (int z = 0; z < d_result->header.size(); z++) {
-				std::cout << "header are " << d_result->header[z] << std::endl;
-				}*/
-				
+				for (int z = 0; z < d_result->header.size(); z++) {
+					std::cout << "header are " << d_result->header[z] << std::endl;
+				}
 				for (int i =0; i < d_result->height; i++) {
 					//for (int k = 0; k < d_result->width; k++) {
 						//size_t current = final_binding[i + k];
-						std::cout << "result is " << map[ final_binding[i]] << " " <<  map[final_binding[i + 1]] << std::endl;
+						std::cout << "result is " << mapH[ final_binding[i]] << " " <<  mapH[final_binding[i + 1]] << std::endl;
 					//}
 					
 				}	
@@ -636,18 +594,18 @@ class Query {
 				std::vector<const char*> innerHash;
 
 				for (int i =0; i < innerRes.size(); i++) {
-					innerHash.push_back( map[innerRes[i].subject]);
-                                        innerHash.push_back( map[innerRes[i].predicate]);
-                                        innerHash.push_back( map[innerRes[i].object]);
+					innerHash.push_back( mapH[innerRes[i].subject]);
+                                        innerHash.push_back( mapH[innerRes[i].predicate]);
+                                        innerHash.push_back( mapH[innerRes[i].object]);
 
 				}
 				
 				std::vector<tripleContainer> outerRes = from_mem(*op->getOuterResult());
 				std::vector<const char*> outerHash;
 				for (int i =0; i< outerRes.size(); i++) {
-					outerHash.push_back( map[outerRes[i].subject]);
-                                        outerHash.push_back( map[outerRes[i].predicate]);
-                                        outerHash.push_back( map[outerRes[i].object]);
+					outerHash.push_back( mapH[outerRes[i].subject]);
+                                        outerHash.push_back( mapH[outerRes[i].predicate]);
+                                        outerHash.push_back( mapH[outerRes[i].object]);
 
 				}
 
@@ -669,7 +627,7 @@ class CountQuery : public Query {
 
 	public:
 		CountQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
-			deviceCircularBuffer rdfPointer,
+			circularBuffer<tripleContainer> rdfPointer,
 			int count) : Query(select, join, rdfPointer) {
 
 				this->count = count;
@@ -702,10 +660,11 @@ class TimeQuery : public Query {
 		
 	public:
 		TimeQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
-			deviceCircularBuffer rdfPointer, circularBuffer<long int> timestampPointer,
+			circularBuffer<tripleContainer> rdfPointer, circularBuffer<long int> timestampPointer,
 			int windowTime, int stepTime) : Query(select, join, rdfPointer) {
 				this->stepTime = stepTime;
 				this->windowTime = windowTime;
+				
 				this->lastTimestamp = 0;
 				this->timestampPointer = timestampPointer;
 		}
@@ -731,8 +690,9 @@ class TimeQuery : public Query {
 					newBegin = i;
 					break;
 				}				
-			}				
-			windowPointer.setBegin(newBegin);
+			}
+							
+			windowPointer.begin = newBegin;
 			timestampPointer.begin = newBegin;
 			
 			//Lancuh query and print results
@@ -764,7 +724,10 @@ struct basic_fnv_1
      }
 };
 
-dense_hash_map<size_t, std::string> map;
+const basic_fnv_1< 1099511628211u, 14695981039346656037u> h_func;
+
+
+dense_hash_map<size_t, std::string> mapH;
 
 
 class QueryManager {
@@ -774,16 +737,13 @@ class QueryManager {
 		int srcSize;
 		
 		std::vector<tripleContainer> rdfBuffer;
-		std::vector<size_t> subjectBuffer;
-		std::vector<size_t> predicateBuffer;
-		std::vector<size_t> objectBuffer;
 
 		std::vector<TimeQuery> timeQueries;
 		std::vector<CountQuery> countQueries;
 		
 		circularBuffer<long int> timestampPointer;
-		deviceCircularBuffer devicePointer;
-    //            dense_hash_map<size_t, std::string> map;
+		circularBuffer<tripleContainer> devicePointer;
+    //            dense_hash_map<size_t, std::string> mapH;
 
 
 	public:
@@ -797,7 +757,7 @@ class QueryManager {
 			timestampPointer.size = buffSize;
 		}
 		
-		void setDevicePointer(deviceCircularBuffer devicePointer) {
+		void setDevicePointer(circularBuffer<tripleContainer> devicePointer) {
 			this->devicePointer = devicePointer;
 		}
 		
@@ -815,36 +775,30 @@ class QueryManager {
 
 				
 		void copyElements (int deviceSpan, int hostSpan, int copySize) {
-			cudaMemcpy(deviceSpan + devicePointer.rdfStore.pointer, &rdfBuffer[0] + hostSpan, copySize * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
-			cudaMemcpy(deviceSpan + devicePointer.subject.pointer, &subjectBuffer[0] + hostSpan, copySize * sizeof(size_t), cudaMemcpyHostToDevice);
-			cudaMemcpy(deviceSpan + devicePointer.predicate.pointer,&predicateBuffer[0] + hostSpan, copySize * sizeof(size_t), cudaMemcpyHostToDevice);
-			cudaMemcpy(deviceSpan + devicePointer.object.pointer, &objectBuffer[0] + hostSpan, copySize * sizeof(size_t), cudaMemcpyHostToDevice);
+			cudaMemcpy(deviceSpan + devicePointer.pointer, &rdfBuffer[0] + hostSpan, copySize * sizeof(tripleContainer), cudaMemcpyHostToDevice); 
 		}
 
 		
 		void advanceDevicePointer() {
 			int copySize = rdfBuffer.size();
 			
-			circularBuffer<tripleContainer> rdfBuff = devicePointer.rdfStore;
+			circularBuffer<tripleContainer> rdfBuff = devicePointer;
 
 			int newEnd = (rdfBuff.end + copySize) % rdfBuff.size;
 	 
 			if (newEnd < rdfBuff.end) {
 				int finalHalf = rdfBuff.size - rdfBuff.end;
-				copyElements(devicePointer.rdfStore.end, 0, finalHalf);			
+				copyElements(devicePointer.end, 0, finalHalf);			
 	
 				int firstHalf = copySize - finalHalf;
 				copyElements(0, finalHalf, firstHalf);			
 			} else {
-				copyElements(devicePointer.rdfStore.end, 0, copySize);	
+				copyElements(devicePointer.end, 0, copySize);	
 			}
 
-			devicePointer.setEnd(newEnd);
+			devicePointer.end = newEnd;
 
 			rdfBuffer.clear();
-			subjectBuffer.clear();
-			predicateBuffer.clear();
-			objectBuffer.clear();
 		}
 		
 		void checkStep() {	
@@ -852,18 +806,18 @@ class QueryManager {
 				query.incrementCount();
 				if (query.isReady()) {
 					advanceDevicePointer();
-					query.setWindowEnd(devicePointer.rdfStore.end);			
+					query.setWindowEnd(devicePointer.end);			
 					query.launch();
-					query.printResults(map);
+					query.printResults(mapH);
 				}
 			}
 			
 			for (auto &query : timeQueries) {
 				if (query.isReady(timestampPointer.pointer[timestampPointer.end - 1])) {
 					advanceDevicePointer();
-					query.setWindowEnd(devicePointer.rdfStore.end - 1);		
+					query.setWindowEnd(devicePointer.end - 1);		
 					query.launch();
-					query.printResults(map);
+					query.printResults(mapH);
 					query.setWindowEnd(1);
 				}				
 			}
@@ -882,7 +836,7 @@ class QueryManager {
 
 			basic_fnv_1< 1099511628211u, 14695981039346656037u> h_func;
 
-			map.set_empty_key(NULL);       
+		//	mapH.set_empty_key(NULL);       
 		
 
 			for (int i =0; i <srcSize; i++) {
@@ -897,9 +851,9 @@ class QueryManager {
                                 currentTriple.predicate = h_func(triple[1]);
                                 currentTriple.object = h_func(triple[2]);
 
-				map[currentTriple.subject] = triple[0];
-                                map[currentTriple.predicate] = triple[1];
-                                map[currentTriple.object] = triple[2] ;
+				mapH[currentTriple.subject] = triple[0];
+                                mapH[currentTriple.predicate] = triple[1];
+                                mapH[currentTriple.object] = triple[2] ;
 
 				struct timeval tp;
 				gettimeofday(&tp, NULL);
@@ -911,9 +865,6 @@ class QueryManager {
 				timestampPointer.begin = timestampPointer.end;
 				
 				rdfBuffer.push_back(currentTriple);
-				subjectBuffer.push_back(currentTriple.subject);
-				predicateBuffer.push_back(currentTriple.predicate);
-				objectBuffer.push_back(currentTriple.object);
 							
 				checkStep();
 			//	usleep(spanTime);
@@ -925,21 +876,159 @@ class QueryManager {
 			//DA OTTIMIZZARE POICHE VIENE LANCIATO ANCHE QUANDO NON SERVE!!
 			advanceDevicePointer();	 
 			for (auto &query : timeQueries)  {
-				query.setWindowEnd(devicePointer.rdfStore.end);
+				query.setWindowEnd(devicePointer.end);
 				query.launch();
-				query.printResults(map);
+				query.printResults(mapH);
 			}
 			
 			for (auto &query :countQueries) {
-				query.setWindowEnd(devicePointer.rdfStore.end);
+				query.setWindowEnd(devicePointer.end);
 				query.launch();
-				query.printResults(map);
+				query.printResults(mapH);
 			}
 			//***** END REMOVE PART-*****			
 		}
+		
+		
+		char* nextChar(char* pointer, char* end) {
+			 while (pointer != end) {
+				if (*pointer == ' ') {
+					pointer++;
+					continue;
+				} else { 
+					return pointer;
+				}
+			}
+			
+			return pointer;
+		}		
+		
+		std::string nextWord(char** pointer, char* end, const char element) {
+			std::string word = "";
+			
+			*pointer = nextChar(*pointer, end);
+			if (*pointer == end) {
+				throw  std::string("Parsing error, unexpected token or end of string");
+			}
+			
+			while(*pointer != end) {
+				if (**pointer == element) {
+					(*pointer)++;
+					return word;
+				}
+				
+				word += **pointer;
+				(*pointer)++;
+			}
+			return word;
+				
+		}
+		
+		std::string err(std::string expected, std::string found) {
+			return	"Parsing error, expected " + expected + "found: '" + found + "'";
+		}
+		
+		void parseQuery(std::string query) {	
+			char* pointer = &query[0];
+			char* end = &query[query.length() - 1];
+			
+			dense_hash_map<std::string, std::string> prefixes;
+			prefixes.set_empty_key("");    			
+			
+			bool error = true;
+			std::vector<std::string> variables;
+			bool addAll = false;
+									
+			std::string word = nextWord(&pointer, end, ' ');
+			
 
-
-
+			
+			if (word == "BASE") {
+			 	//IMPLEMENTATION OF BASE
+			}
+			
+			while(word == "PREFIX") {
+				std::string prefix = nextWord(&pointer, end, ':');
+				std::string prefixUri = nextWord(&pointer, end, ' ');
+				prefixes[prefix] = prefixUri;
+				//CHECK DUPLICATE PREFIX
+				word = nextWord(&pointer, end, ' ');				
+			}
+			
+			if (word == "SELECT")  {
+				error = false;
+				word = nextWord(&pointer, end, ' ');
+								
+				do {					
+					if (word == "*") {
+						addAll = true;
+						word = nextWord(&pointer, end, ' ');
+						if (word != "WHERE") {
+							throw err("WHERE", word); 
+						} else {
+							break;
+						}
+					}
+					
+					if (word[0] != '?') {
+						throw "Error in variable entered";
+					}
+					
+					variables.push_back(word.substr(1));
+					word = nextWord(&pointer, end, ' ');	
+					
+				} while (word != "WHERE");
+				
+				word = nextWord(&pointer, end, ' ');
+				
+				if (word != "{") {
+					throw err("{", word);
+				}
+				
+				
+				do  {
+					
+					int arr;
+					std::vector<std::size_t> constants;
+					
+					const SelectArr stdArr[3] = {SelectArr::S, SelectArr::P, SelectArr::O};
+					
+					
+					for (int i = 0; i <3; i ++ ) {
+						word = nextWord(&pointer, end, ' ');
+						
+						if (word[0] == '?') {
+						//ADD VARAIBLE FOR STAR
+							arr += static_cast<int> (stdArr[i]);   
+						} else {
+							constants.push_back(h_func(word));
+						}
+						
+					}
+					
+					//CREO SELECT
+					word = nextWord(&pointer, end, ' ');
+						
+					if (word != "." && word != "}") {
+						throw err(". or }", word);
+					}
+					
+				} while (word != "}");
+					
+					
+			} else {
+			
+				throw "Parsing error";
+			}
+				
+								
+			pointer = nextChar(pointer, end);
+			
+			if (pointer != end)  {
+				throw "CHARACTER AFTER EDN";
+			}				
+			
+		}
 };
 
 
@@ -964,17 +1053,23 @@ std::vector<accuracy> stats(std::vector<type_t> input) {
 	return statistic;
 }
 
+
+
+
+
+
 int main(int argc, char** argv) {
  
 		using namespace std;
 		
 		struct timeval beginPr, beginCu, beginEx, end;
+		
 		gettimeofday(&beginPr, NULL);	
 		cudaDeviceReset();
 		standard_context_t context;
 
                 size_t BUFFER_SIZE = 400000;
-		deviceCircularBuffer windowPointer;
+		circularBuffer<tripleContainer> windowPointer;
 
 
 
@@ -1001,24 +1096,30 @@ int main(int argc, char** argv) {
                 }
 
                 rdfStoreFile.close();
-
+		mapH.set_empty_key(NULL);    
                 int N_CYCLE = 1;
 		for (int i = 0; i < N_CYCLE; i++) {
-			
+
 			gettimeofday(&beginCu, NULL);
 			QueryManager manager(h_rdfStore, fileLength, 1, BUFFER_SIZE);
-			cudaMalloc(&windowPointer.rdfStore.pointer, BUFFER_SIZE * sizeof(tripleContainer));
-			cudaMalloc(&windowPointer.subject.pointer, BUFFER_SIZE * sizeof(size_t));
-                        cudaMalloc(&windowPointer.predicate.pointer, BUFFER_SIZE * sizeof(size_t));
-                        cudaMalloc(&windowPointer.object.pointer, BUFFER_SIZE * sizeof(size_t));
+			cudaMalloc(&windowPointer.pointer, BUFFER_SIZE * sizeof(tripleContainer));
 					
 			int begin = 0;
-			windowPointer.setBegin(begin);
-			windowPointer.setEnd(begin);
-			windowPointer.setSize(BUFFER_SIZE);
-			
+			windowPointer.begin = begin;
+			windowPointer.end = begin;
+			windowPointer.size = BUFFER_SIZE;	
 			manager.setDevicePointer(windowPointer);
-			basic_fnv_1< 1099511628211u, 14695981039346656037u> h_func;
+			
+			try {
+				manager.parseQuery("PREFIX ciao: test SELECT * ?a ?b WHERE { <https:> ?a ?b  } ");
+			}
+			catch (std::string exc) {
+				std::cout << "Exception raised: " << exc << std::endl;
+				exit(1);
+			}
+			
+			/*
+			
 		        //set Queries (select that will be joined)
 		        tripleContainer h_queryVector1;
 			h_queryVector1.subject = 0;
@@ -1071,7 +1172,7 @@ int main(int argc, char** argv) {
 
 
 			TimeQuery count5(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 7000, 7000);
-			manager.addTimeQuery(count5);*/
+			manager.addTimeQuery(count5);
 			
 			CountQuery count2(selectOperations, joinOperations, windowPointer, 50000);
 			manager.addCountQuery(count2);
@@ -1108,10 +1209,8 @@ int main(int argc, char** argv) {
 			cout << "" << endl;
 
 
-			cudaFree(windowPointer.subject.pointer);
-			cudaFree(windowPointer.predicate.pointer);
-			cudaFree(windowPointer.object.pointer);
-			cudaFree(windowPointer.rdfStore.pointer);
+			cudaFree(windowPointer.pointer);
+			mapH.clear();
 		}
 
 	

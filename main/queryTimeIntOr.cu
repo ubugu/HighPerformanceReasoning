@@ -203,7 +203,10 @@ class TripleComparator
 			if ((maskA[0] != -1) && (tripleA[maskA[0]] < tripleB[maskB[0]])) {
 				return true;
 			}
-		
+		y; per il reasoning invece su cosa mi dovrei focalizzare?
+
+
+
 			if ((maskA[1] != -1) && (tripleA[maskA[0]] == tripleB[maskB[0]]) && (tripleA[maskA[1]] < tripleB[maskA[1]])) {
 				return true;
 			}
