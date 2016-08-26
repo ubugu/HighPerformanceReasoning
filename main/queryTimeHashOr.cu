@@ -5,16 +5,15 @@
 #include <moderngpu/kernel_compact.hxx>
 #include <moderngpu/kernel_join.hxx>
 #include <moderngpu/kernel_mergesort.hxx>
-#include <sys/time.h>
 #include <sparsehash/dense_hash_map>
-
+#include <sys/time.h>
 
 
 using namespace mgpu;
 using google::dense_hash_map;
 
 //TODO implementare la projection su gpu
-
+//TODO PASSARE I TIMESTAMP DA US A MS (OVERFLOW DI DAY E HOUR)
 //TODO 
 //VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
 int VALUE = 0;
@@ -87,6 +86,30 @@ int separateWords(std::string inputString, std::vector<std::string> &wordVector,
 	return 0;
 }
 
+
+class Operation {
+	protected:
+		Binding* result;	
+		std::vector<std::string> variables;
+	public:
+		Binding* getResult() {
+			return this->result;
+		}
+	
+		void setResult(Binding* result) {
+			this->result = result;
+		}
+			
+		std::vector<std::string> getVariables() {
+			return variables;
+		}
+	
+		Binding** getResultAddress() {
+			return &result;
+		}
+};
+
+
 /*
 * Join enum to define order and which element to join
 * NJ indicates a non-join value, so it is ignored during join and sorting
@@ -94,15 +117,13 @@ int separateWords(std::string inputString, std::vector<std::string> &wordVector,
 */
 enum class JoinMask {NJ = -1, SBJ = 0, PRE = 1, OBJ = 2};
 
-
 //Section for defining operation classes
-class JoinOperation 
+class JoinOperation : public Operation
 {	
 	//TODO Modificare classe in modo che permetta la join di join
 	private:
 		Binding** innerTable;
 		Binding** outerTable;
-		Binding* result = 0;
 		
 		std::vector<std::string> joinMask;
 
@@ -123,28 +144,13 @@ class JoinOperation
 		
 		std::vector<std::string> getJoinMask() {
 			return this->joinMask;
-		};
-		
-
-		Binding* getResult() {
-			return this->result;
-		};
-		
-		void setResult(Binding* result) {
-			this->result = result;
-		};
-		
-
-		
-		
+		};						
 };
 
-enum class SelectArr { S = 0, P = 1, O = 2, SP = 3, SO = 4, PO = 5, SPO = 6};
+enum class SelectArr { S = 1, P = 2, O = 4, SP = 3, SO = 5, PO = 6, SPO = 7};
 
 
-
-
-__global__ void unarySelect (circularBuffer<tripleContainer> src, int target_pos, int first_pos, int second_pos, size_t* value, size_t* dest, int width, int* size) {
+__global__ void unarySelect (circularBuffer<tripleContainer> src, int target_pos, int first_pos, int second_pos, size_t value, size_t* dest, int width, int* size) {
 
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -156,7 +162,7 @@ __global__ void unarySelect (circularBuffer<tripleContainer> src, int target_pos
 
 	size_t temp[3] = {src.pointer[newIndex].subject, src.pointer[newIndex].predicate, src.pointer[newIndex].object};
 
-	if (temp[target_pos] == (*value)) {
+	if (temp[target_pos] == value) {
 		int add = atomicAdd(size, 1);
 		size_t* dest_p = (size_t*) (dest + add * width) ;
 
@@ -165,8 +171,6 @@ __global__ void unarySelect (circularBuffer<tripleContainer> src, int target_pos
 
 	}
 }
-
-		
 
 __global__ void binarySelect (circularBuffer<tripleContainer> src, int target_pos, int target_pos2, int dest_pos, size_t* value, size_t* value2, size_t* dest, int width, int* size) {
 
@@ -189,55 +193,26 @@ __global__ void binarySelect (circularBuffer<tripleContainer> src, int target_po
 }
 
 
-
-
-class SelectOperation 
+class SelectOperation : public Operation
 {
 	private:
-		mem_t<tripleContainer>* query;
 		std::vector<size_t> constants;
-		Binding* result;
 		int arr;
-		std::vector<std::string> variables;
-
+		
 	public:
-	/*	SelectOperation(mem_t<tripleContainer>* query, SelectArr arr, std::string variable) {
-			this->query = query;	
-			this->arr = static_cast<int> (arr);
-			separateWords(variable, variables, ' ');
-		};*/
+		SelectOperation(std::vector<size_t> constants, std::vector<std::string> variables, int arr) {
+			this->variables = variables;
+			this->constants = constants;	
+			this->arr = arr;
+		};
 
 		int getArr() {
 			return this-> arr;
 		}
 			
-		mem_t<tripleContainer>* getQuery() {
-			return this->query;
+		std::vector<size_t> getQuery() {
+			return this->constants;
 		};
-		                                                                            
-		
-		void setResult(Binding* result) {
-			this->result = result;
-		};
-		
-		Binding* getResult() {
-			return result;
-		};
-		
-		std::vector<std::string> getVariables() {
-			return variables;
-		};
-		
-		Binding** getResultAddress() {
-			return &result;
-		}
-
-
-		
-
-
-
-
 
 		/*
 		* Make multiple select query, with specified comparison condition,
@@ -261,31 +236,24 @@ class SelectOperation
 			//INSERIRE DIVISIONE CORRETTA
 			int gridSize = 300;
 			int blockSize = (storeSize / gridSize) + 1;
-			tripleContainer* query = this->query->data();
 		
 			result = new Binding(2, storeSize);
 						
 			switch(arr) {
 
-				case(0): {
-					size_t* value = &(query->subject);
-					unarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 1, 2, value, result->pointer, result->width, d_resultSize);
+				case(1): {
+					unarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 1, 2, constants[0], result->pointer, result->width, d_resultSize);
 					break;
 				}
 
-				case(1): {
-					size_t* value = &(query->predicate);
-					unarySelect<<<gridSize,blockSize>>>(d_pointer,  1, 0, 2, value, result->pointer, result->width, d_resultSize);
+				case(2): {
+					unarySelect<<<gridSize,blockSize>>>(d_pointer,  1, 0, 2, constants[0], result->pointer, result->width, d_resultSize);
 					break;
 				}
 					
-				case(2): {
-				
-			                size_t* value = &(query->object);
-	
-			                unarySelect<<<gridSize,blockSize>>>(d_pointer,  2, 0, 1, value, result->pointer, result->width, d_resultSize);
-			             
-			                break;
+				case(4): {
+			        unarySelect<<<gridSize,blockSize>>>(d_pointer,  2, 0, 1, constants[0], result->pointer, result->width, d_resultSize);
+			        break;
 				}
 		
 		/*		case(3): {
@@ -294,22 +262,20 @@ class SelectOperation
 					binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.predicate, value1, value2, result->data(), d_pointer.rdfStore, d_resultSize);
 					break;
 				}
-
-				case(4): {
+				case(5): {
 					size_t* value1 = &(query->subject);
 					size_t* value2 = &(query->object);
 					binarySelect<<<gridSize,blockSize>>>(d_pointer.subject, d_pointer.object, value1, value2, result->data(), d_pointer.rdfStore, d_resultSize);
 					break;
 				}
-
-				case(5): {
+				case(6): {
 					size_t* value1 = &(query->predicate);
 					size_t* value2 = &(query->object);
 					binarySelect<<<gridSize,blockSize>>>(d_pointer.predicate, d_pointer.object, value1, value2, result->data(), d_pointer.rdfStore, d_resultSize);
 					break;
 				}
 					
-				case(6): {
+				case(7): {
 					cudaMemcpy(result->data(), d_pointer.rdfStore.pointer, storeSize * sizeof(tripleContainer), cudaMemcpyDeviceToDevice);
 					cudaMemcpy(d_resultSize, &storeSize, sizeof(int), cudaMemcpyHostToDevice);
 			                break;
@@ -319,16 +285,11 @@ class SelectOperation
 	
 	
 			cudaMemcpy(&h_resultSize, d_resultSize, sizeof(int), cudaMemcpyDeviceToHost);
-
-			result->height  =  h_resultSize;		
-
+			
+			result->height  =  h_resultSize;
+					
 			cudaFree(d_resultSize);
-
 		}
-
-
-
-
 	
 };
 
@@ -365,10 +326,6 @@ class SelectOperation
 			return false;
 		}
 };
-
-
-
-
 
 
 //Sorter for sorting the triple due to theorder defined by the sortMask
@@ -411,9 +368,6 @@ class SelectOperation
 };
 
 
-
-
-
 struct mask_t {
 	int subject;
 	int predicate;
@@ -434,9 +388,8 @@ __global__ void reorderTriple(tripleContainer* src, tripleContainer* dest, int m
 	dest[destIndex] = {triple[mask.subject], triple[mask.predicate], triple[mask.object]};
 }
 
+__global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest, tripleContainer* outerSrc, tripleContainer* outerDest, int2* srcIndex, int maxSize)  {
 
-__global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest, tripleContainer* outerSrc, tripleContainer* outerDest, int2* srcIndex, int maxSize) 
-{
 	int destIndex = blockIdx.x * blockDim.x + threadIdx.x;
  
 	if (destIndex  >= maxSize)  {
@@ -450,12 +403,7 @@ __global__ void indexCopy(tripleContainer* innerSrc, tripleContainer* innerDest,
 	outerDest[destIndex] = outerSrc[outerIndex];
 }
 
-
-
-
-
-std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outerTable, std::vector<std::string> joinMask)
-{
+std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outerTable, std::vector<std::string> joinMask) {
 	//TODO Migliorare la join nel reordering delle triple
 	standard_context_t context;
 	std::vector<mem_t<tripleContainer>*> finalResults;
@@ -464,25 +412,18 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outer
 	
 /*
 	
-
-
 	mask_t mask;
 	mask.subject = static_cast<int> (outerMask[0]);
 	mask.predicate = static_cast<int> (outerMask[1]);
-
 	mask.object = static_cast<int> (outerMask[2]);	
 	
 	//TODO SETTARE DIVISIONE
 	int gridSize = 124;
 	int blockSize = (outerSize/ gridSize) + 1;
 	mem_t<tripleContainer>* tempOuter = new mem_t<tripleContainer>(outerSize, context);
-
 	reorderTriple<<<gridSize, blockSize>>>(outerTable, tempOuter->data(), outerSize, mask);
-
-
 	
 	std::cout << "LAUNCH MEGER " << std::endl;
-
 	//Sort the two input array
 	mergesort<launch_params_t<128, 2>>(d_iter, innerTable->height, *innerSorter, context);
 	exit(1);
@@ -500,7 +441,6 @@ std::vector<mem_t<tripleContainer>*> rdfJoin(Binding* innerTable, Binding* outer
 	gridSize = 64;
 	blockSize = (joinResult.size() / gridSize) + 1; 
 	indexCopy<<<gridSize, blockSize>>>(innerTable, innerResults->data(), tempOuter->data(), outerResults->data(), joinResult.data(), joinResult.size());
-
 	finalResults.push_back(innerResults);
 	finalResults.push_back(outerResults);
 	cudaFree(tempOuter->data());
@@ -589,15 +529,12 @@ class Query {
 
 		/*	for (auto op : join) {
 				std::cout << "join result is " << op->getInnerResult()->size() << std::endl;
-
 				std::vector<tripleContainer> innerRes = from_mem(*op->getInnerResult());
 				std::vector<const char*> innerHash;
-
 				for (int i =0; i < innerRes.size(); i++) {
 					innerHash.push_back( mapH[innerRes[i].subject]);
                                         innerHash.push_back( mapH[innerRes[i].predicate]);
                                         innerHash.push_back( mapH[innerRes[i].object]);
-
 				}
 				
 				std::vector<tripleContainer> outerRes = from_mem(*op->getOuterResult());
@@ -606,9 +543,7 @@ class Query {
 					outerHash.push_back( mapH[outerRes[i].subject]);
                                         outerHash.push_back( mapH[outerRes[i].predicate]);
                                         outerHash.push_back( mapH[outerRes[i].object]);
-
 				}
-
 				VALUE += op->getInnerResult()->size();
 				cudaFree(op->getInnerResult()->data());
 				cudaFree(op->getOuterResult()->data());
@@ -654,6 +589,7 @@ class CountQuery : public Query {
 class TimeQuery : public Query {
 	private:
 		circularBuffer<long int> timestampPointer;
+		//TIME IS IN U_SEC
 		long int stepTime;
 		long int windowTime;
 		long int lastTimestamp;
@@ -742,6 +678,11 @@ class QueryManager {
 		std::vector<CountQuery> countQueries;
 		
 		circularBuffer<long int> timestampPointer;
+
+
+
+
+
 		circularBuffer<tripleContainer> devicePointer;
     //            dense_hash_map<size_t, std::string> mapH;
 
@@ -925,23 +866,76 @@ class QueryManager {
 		}
 		
 		std::string err(std::string expected, std::string found) {
-			return	"Parsing error, expected " + expected + "found: '" + found + "'";
+			return	"Parsing error, expected " + expected + " found: '" + found + "'";
 		}
 		
-		void parseQuery(std::string query) {	
+		bool testWord(std::string expected, std::string found) {
+			if (found != expected) {
+				throw err(expected, found);
+			}
+			return true;
+		}
+		
+		long int timeParse(std:: string word) {
+			char last = word[word.length() -1];
+			//U_SEC TIME
+			long int time = 0;
+			
+			if (last == 's') {
+				if (word[word.length() - 2] == 'm') {
+					time = 1000 * stoi(word.substr(0, word.length() -2));
+				}
+				
+				else {
+					time = 1000000 * stoi(word.substr(0, word.length() -1));
+				}	
+			}
+			
+			else if (last == 'm') {
+				time = 60 * 1000000 * stoi(word.substr(0, word.length() -1));				
+			}
+			
+			else if (last == 'h') {
+				time = 60 * 60 * 1000000 * stoi(word.substr(0, word.length() -1));					
+			}
+			
+			else if (last == 'd') {
+				time = 24 * 60 * 60 * 1000000 * stoi(word.substr(0, word.length() -1));		
+			}
+			
+			else {
+				throw err("TIME UNIT", word);
+			}
+			
+			return time;
+					
+		}
+		
+		void parseQuery(std::string query) {
+		
+			//CHECK CHARACTER WORD 
+			
 			char* pointer = &query[0];
 			char* end = &query[query.length() - 1];
 			
+			std::vector<std::string> variables;
 			dense_hash_map<std::string, std::string> prefixes;
 			prefixes.set_empty_key("");    			
 			
-			bool error = true;
-			std::vector<std::string> variables;
+			std::vector<SelectOperation*> selectOperations;
+			std::vector<JoinOperation*> joinOperations;			
+			dense_hash_map<std::string, Operation**> stackOperations;
+			stackOperations.set_empty_key("");
+			
+			bool logical = false;
+			long int window = 0;
+			long int step = 0;
+			
+			
 			bool addAll = false;
 									
+									
 			std::string word = nextWord(&pointer, end, ' ');
-			
-
 			
 			if (word == "BASE") {
 			 	//IMPLEMENTATION OF BASE
@@ -955,8 +949,60 @@ class QueryManager {
 				word = nextWord(&pointer, end, ' ');				
 			}
 			
+			
+			
+			testWord("FROM", word);
+			word = nextWord(&pointer, end, ' ');				
+			
+			//'NAMED' TOKEN
+		
+			testWord("STREAM", word);
+			
+						
+			//INDETIFY WHAT TO DO WITH STREAM IRI	
+			std::string streamIri = nextWord(&pointer, end, ' ');				
+
+			word = nextWord(&pointer, end, ' ');			
+			testWord("RANGE", word);
+			
+			word = nextWord(&pointer, end, ' ');				
+			
+			if (word == "TRIPLES") {
+				word = nextWord(&pointer, end, ' ');
+				step = std::stoi(word);
+				logical = false;
+				//NEED TO CHECK IF NO INTEGER IS INSERTED
+			}
+			
+			else {
+				//VERIFICARE SE RICEVO UN INT SEGUITO DA UNIT° DI MISURA / SPAZIO VALIDO O NO
+				window = timeParse(word);
+				
+				word = nextWord(&pointer, end, ' ');							
+				
+				if (word == "STEP") {
+					word = nextWord(&pointer, end, ' ');							
+					step = timeParse(word);
+				}
+				
+				else if (word == "TUMBLING") {
+					step = window;
+				}
+				
+				else {
+					throw err("STEP TIME", word);
+				}
+				
+				
+			}
+			
+			
+			
+			word = nextWord(&pointer, end, ' ');	
+			
+			
 			if (word == "SELECT")  {
-				error = false;
+
 				word = nextWord(&pointer, end, ' ');
 								
 				do {					
@@ -965,13 +1011,12 @@ class QueryManager {
 						word = nextWord(&pointer, end, ' ');
 						if (word != "WHERE") {
 							throw err("WHERE", word); 
-						} else {
-							break;
-						}
+						} 
+						break;
 					}
 					
 					if (word[0] != '?') {
-						throw "Error in variable entered";
+						throw std::string("Error in variable entered");
 					}
 					
 					variables.push_back(word.substr(1));
@@ -990,6 +1035,7 @@ class QueryManager {
 					
 					int arr;
 					std::vector<std::size_t> constants;
+					std::vector<std::string> selectVariable;
 					
 					const SelectArr stdArr[3] = {SelectArr::S, SelectArr::P, SelectArr::O};
 					
@@ -998,15 +1044,63 @@ class QueryManager {
 						word = nextWord(&pointer, end, ' ');
 						
 						if (word[0] == '?') {
-						//ADD VARAIBLE FOR STAR
-							arr += static_cast<int> (stdArr[i]);   
+							if (addAll) {
+								//CHECK FOR DUPLICATE VARIABLES
+								variables.push_back(word.substr(1));
+							}
+							selectVariable.push_back(word.substr(1));
 						} else {
 							constants.push_back(h_func(word));
+							arr += static_cast<int> (stdArr[i]);   
 						}
 						
 					}
+										
+					SelectOperation* currentOp = new SelectOperation(constants, selectVariable, arr);
+					selectOperations.push_back(currentOp);
 					
-					//CREO SELECT
+					std::cout << "ADDED SELECT, total size is " << selectOperations.size() << std::endl;
+					std::cout << "values are:" << std::endl;
+					
+					std::cout << "constants" << std::endl;
+					for (int i = 0; i < constants.size(); i++) {
+						std::cout << "- " << constants[i] << std::endl;
+					}
+					
+					std::cout << "varaibles " << std::endl;
+					
+					for (int i =0; i<variables.size(); i++) {
+						std::cout << "- " << variables[i] << std::endl;
+					}
+					
+					std::cout << "ARR VALUS IS " << arr << std::endl;
+					
+					/**** SECTION FOR JOIN ***/
+					
+					/*
+					dense_hash_map<Operation**, std::vector<std::string>> currentStack;
+					stackOperations.set_empty_key(NULL);
+				
+					Operation* op = currentOp;
+					for (auto var : selectVaraible) {
+						
+						if (stackVaraible[var] == NULL) {
+							stackOperations[var] = &op;
+						} 
+						else {
+							currentStack.[stackVaraible[var]].push_back(var);
+						}						
+					}
+
+					//COME CICLARE SUGLI ELEMENTI DELL' HASH MAP
+					for (auto oper : currentStack) {
+						auto operVar = currentStack[oper];
+						
+						oper = newnewOp;
+					}						
+					
+					/**** END JOIN SECTION ***/
+
 					word = nextWord(&pointer, end, ' ');
 						
 					if (word != "." && word != "}") {
@@ -1018,16 +1112,30 @@ class QueryManager {
 					
 			} else {
 			
-				throw "Parsing error";
+				throw err("SELECT", word);
 			}
 				
 								
 			pointer = nextChar(pointer, end);
 			
 			if (pointer != end)  {
-				throw "CHARACTER AFTER EDN";
-			}				
+				throw std::string("Unexpected token");
+			}
 			
+			
+			if (logical == true) {
+				TimeQuery query(selectOperations, joinOperations, devicePointer, timestampPointer, window, step);
+				timeQueries.push_back(query);
+			}
+			
+			else {
+				CountQuery query(selectOperations, joinOperations, devicePointer, window);
+				countQueries.push_back(query);						
+			}				
+
+
+
+
 		}
 };
 
@@ -1068,7 +1176,7 @@ int main(int argc, char** argv) {
 		cudaDeviceReset();
 		standard_context_t context;
 
-                size_t BUFFER_SIZE = 400000;
+        size_t BUFFER_SIZE = 400000;
 		circularBuffer<tripleContainer> windowPointer;
 
 
@@ -1111,80 +1219,33 @@ int main(int argc, char** argv) {
 			manager.setDevicePointer(windowPointer);
 			
 			try {
-				manager.parseQuery("PREFIX ciao: test SELECT * ?a ?b WHERE { <https:> ?a ?b  } ");
+				manager.parseQuery("FROM STREAM <streamUri> RANGE TRIPLES 50000 SELECT ?s ?p WHERE { ?s ?p <http://example.org/int/99>  } ");
 			}
 			catch (std::string exc) {
 				std::cout << "Exception raised: " << exc << std::endl;
 				exit(1);
 			}
 			
+			
 			/*
-			
-		        //set Queries (select that will be joined)
-		        tripleContainer h_queryVector1;
-			h_queryVector1.subject = 0;
-			h_queryVector1.predicate = 0;
-			h_queryVector1.object =  h_func("<http://example.org/int/99>");
-			
-			
-		        tripleContainer h_queryVector2;	
-			h_queryVector2.subject = h_func("<http://example.org/int/0>");
-			h_queryVector2.predicate = 0;
-			h_queryVector2.object = 0;
-
-			cout << "query is: first obj: " << h_queryVector1.object << "; secons subj: " << h_queryVector2.subject << endl;
-
-		        mem_t<tripleContainer> d_queryVector1(1, context);
-			cudaMemcpy(d_queryVector1.data(), &h_queryVector1, sizeof(tripleContainer), cudaMemcpyHostToDevice);
+			std::vector<size_t> constOne;
+			constOne.push_back( h_func("<http://example.org/int/99>"));
+				
+			std::vector<std::string> variables;
+			variables.push_back("?s");
+			variables.push_back("?p");
 		
-		        mem_t<tripleContainer> d_queryVector2(1, context);
-			cudaMemcpy(d_queryVector2.data(), &h_queryVector2, sizeof(tripleContainer), cudaMemcpyHostToDevice);
-	
-			//set select mask operation
-			std::vector<tripleContainer*> selectQuery;
-			selectQuery.push_back(d_queryVector1.data());
-			selectQuery.push_back(d_queryVector2.data());
-
-			SelectArr arr1 = SelectArr::O;
-			SelectArr arr2 = SelectArr::S;
-		
-
-			//Creat operation object to pass to query manager
-			SelectOperation  selectOp1(&d_queryVector1, arr1, "?s ?p");
-		//	SelectOperation  selectOp2(&d_queryVector2, arr2, "?p ?o");
-		
-		//	JoinOperation  joinOp(selectOp1.getResultAddress(), selectOp2.getResultAddress(), "?p");
-		
+			SelectOperation  selectOp1(constOne, variables,  static_cast<int> (SelectArr::O));		
 			std::vector<SelectOperation*> selectOperations;
 			std::vector<JoinOperation*> joinOperations;
 		
 			selectOperations.push_back(&selectOp1);
-		//	selectOperations.push_back(&selectOp2);
-		//	joinOperations.push_back(&joinOp);
-			
-			int stepCount = 100000;
-			//std::cout << "starting tmsp " << manager.getTimestampPointer().begin << std::endl;
-			
-			
-			
-			/*TimeQuery count(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 5000, 5000);
-			manager.addTimeQuery(count);
-
-
-			TimeQuery count5(selectOperations, joinOperations, windowPointer, manager.getTimestampPointer(), 7000, 7000);
-			manager.addTimeQuery(count5);
 			
 			CountQuery count2(selectOperations, joinOperations, windowPointer, 50000);
 			manager.addCountQuery(count2);
-			
-			
-			/*CountQuery count3(selectOperations, joinOperations, windowPointer, 50000);
-			manager.addCountQuery(count3);
-			
-			CountQuery count4(selectOperations, joinOperations, windowPointer, 34652);
-			manager.addCountQuery(count4);	*/		
-			
+			*/
 			gettimeofday(&beginEx, NULL);	
+
 
 			manager.start();
 
@@ -1194,8 +1255,7 @@ int main(int argc, char** argv) {
 			gettimeofday(&end, NULL);
 
 
-			float exTime = (end.tv_sec - beginEx.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginEx.tv_usec) / 1000 ;
-			float prTime = (end.tv_sec - beginPr.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginPr.tv_usec) / 1000 ;
+
 			float cuTime = (end.tv_sec - beginCu.tv_sec ) * 1000 + ((float) end.tv_usec - (float) beginCu.tv_usec) / 1000 ;
 			
 
@@ -1203,10 +1263,8 @@ int main(int argc, char** argv) {
 			timeCuVector.push_back(cuTime);
 
 						
-			cout << "Total time: " << prTime << endl;
+
 			cout << "Cuda time: " << cuTime << endl;
-			cout << "Execution time: " << exTime << endl;					
-			cout << "" << endl;
 
 
 			cudaFree(windowPointer.pointer);
