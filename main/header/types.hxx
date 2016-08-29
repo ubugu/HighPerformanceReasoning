@@ -1,79 +1,78 @@
 #pragma once
 
-//Struct to contains a single triple with int type.
-struct tripleContainer {
-        int subject;
-        int predicate;
-        int object;
+//TODO 
+//VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
+int VALUE = 0;
+std::vector<float> timeCuVector;                
+std::vector<long int> timeExVector;
+//**END TESTING***//
+
+
+//struct to contains a single triple with int type.
+struct TripleContainer {
+        size_t subject;
+        size_t predicate;
+        size_t object;
+
+	void print() {
+		std::cout << subject << " " << predicate << " " << object << std::endl;
+	}
 };
 
-template<typename rdf_t, typename arr_t>
-struct triplePointer {
-	rdf_t rdfStore;
-	arr_t subject;
-	arr_t predicate;
-	arr_t object;
-};
 
+//Struct for circular buffer
 template<typename type_t>
-struct circularBuffer {
+struct CircularBuffer {
 	type_t* pointer;
 	int begin;
 	int end;
 	int size;
 	
-	circularBuffer() : pointer(0), begin(0), end(0), size(0) {}
+	CircularBuffer() : pointer(0), begin(0), end(0), size(0) {}
 	
-	circularBuffer(int begin, int size, type_t* pointer) {
-		this->begin = begin;
-		this->end = begin;
-		this->size = size;
-		this->pointer = pointer;
-	}
-
-};
-
-
-
-struct deviceCircularBuffer : triplePointer<circularBuffer<tripleContainer>, circularBuffer<int>> {
-	void setValues(int begin, int end, int size) {
-		setBegin(begin);
-		setEnd(end);
-		setSize(size);
-	}	
-
-	void setBegin(int begin) {
-		rdfStore.begin = begin;
-		subject.begin = begin;
-		predicate.begin = begin;
-		object.begin = begin;
-	}
-	
-	void setEnd(int end) {
-		rdfStore.end = end;
-		subject.end = end;
-		predicate.end = end;
-		object.end = end;
-	}
-	
-	void setSize(int size) {
-		rdfStore.size = size;
-		subject.size = size;
-		predicate.size = size;
-		object.size = size;
+	int getLength() {
+		return (abs(end - begin + size) % size);
 	}
 	
 	void advanceBegin(int step){
-		int newBegin = (rdfStore.begin + step) % rdfStore.size;
-		setBegin(newBegin);
-	}
-	
-	void advanceEnd(int step){
-		int newEnd = (rdfStore.end + step) % rdfStore.size;
-		setEnd(newEnd);
-	}
-	
-				
+		begin = (begin + step) % size;
+	}	
 };
+
+struct Binding {
+	size_t* pointer;
+	int width;
+	int height;
+	std::vector<std::string> table_header;
+	
+	Binding() {}
+	
+	Binding(int width, int height) {
+		cudaMalloc(&pointer, width * height *  sizeof(size_t));
+		this->width = width;
+		this->height = height;
+	}
+};
+
+
+template <std::size_t FnvPrime, std::size_t OffsetBasis>
+struct basic_fnv_1
+{
+    std::size_t operator()(std::string const& text) const
+    {
+        std::size_t hash = OffsetBasis;
+         for(std::string::const_iterator it = text.begin(), end = text.end();
+                 it != end; ++it)
+         {
+             hash *= FnvPrime;
+             hash ^= *it;
+         }
+         return hash;
+
+     }
+};
+
+const basic_fnv_1< 1099511628211u, 14695981039346656037u> h_func;
+
 
 
