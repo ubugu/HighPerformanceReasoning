@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
 
         size_t BUFFER_SIZE = 400000;
   
-        int N_CYCLE = 50;
+        int N_CYCLE = 1;
 
 	for (int i = 0; i < N_CYCLE; i++) {
 
@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
 		QueryManager manager(h_rdfStore, fileLength, BUFFER_SIZE);
 					
 		try {
-			manager.parseQuery("FROM STREAM <streamUri> RANGE TRIPLES 50000 SELECT ?s WHERE { ?s <http://example.org/int/8> <http://example.org/int/99> .  ?s <http://example.org/int/473> <http://example.org/int/99>   } ");
+			manager.parseQuery("FROM STREAM <streamUri> RANGE TRIPLES 50000 SELECT ?s WHERE { ?s <http://example.org/int/8> <http://example.org/int/99> } ");
 		}
 		catch (std::string exc) {
 			std::cout << "Exception raised: " << exc << std::endl;

@@ -25,7 +25,6 @@ __global__ void unarySelect (CircularBuffer<TripleContainer> src, int target_pos
 		size_t* dest_p = (size_t*) (dest + add * width) ;
 		*dest_p = temp[first_pos];
 		*(dest_p + 1) = temp[second_pos];
-
 	}
 }
 
@@ -48,25 +47,18 @@ __global__ void binarySelect (CircularBuffer<TripleContainer> src, int target_po
 }
 
 
+
 class SelectOperation : public Operation
 {
 	private:
-		std::vector<size_t> constants;
-		int arr;
+		std::vector<size_t> constants_;
+		int arr_;
 		
 	public:
 		SelectOperation(std::vector<size_t> constants, std::vector<std::string> variables, int arr) {
-			this->variables = variables;
-			this->constants = constants;	
-			this->arr = arr;
-		}
-
-		int getArr() {
-			return this-> arr;
-		}
-			
-		std::vector<size_t> getQuery() {
-			return this->constants;
+			this->variables_ = variables;
+			this->constants_ = constants;	
+			this->arr_ = arr;
 		}
 
 		void rdfSelect(CircularBuffer<TripleContainer> d_pointer, const int storeSize) {
@@ -81,38 +73,38 @@ class SelectOperation : public Operation
 			int gridSize = 300;
 			int blockSize = (storeSize / gridSize) + 1;
 		
-			result = new Binding(variables.size(), storeSize);
+			result_ = new Binding(variables_.size(), storeSize);
 						
-			switch(arr) {
+			switch(arr_) {
 
 				case(1): {
-					unarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 1, 2, constants[0], result->pointer, result->width, d_resultSize);
+					unarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 1, 2, constants_[0], result_->pointer, result_->width, d_resultSize);
 					break;
 				}
 
 				case(2): {
-					unarySelect<<<gridSize,blockSize>>>(d_pointer,  1, 0, 2, constants[0], result->pointer, result->width, d_resultSize);
+					unarySelect<<<gridSize,blockSize>>>(d_pointer,  1, 0, 2, constants_[0], result_->pointer, result_->width, d_resultSize);
 					break;
 				}
 					
 				case(4): {
-			        unarySelect<<<gridSize,blockSize>>>(d_pointer,  2, 0, 1, constants[0], result->pointer, result->width, d_resultSize);
-			        break;
+			        	unarySelect<<<gridSize,blockSize>>>(d_pointer,  2, 0, 1, constants_[0], result_->pointer, result_->width, d_resultSize);
+			        	break;
 				}
 		
 				case(3): {
-					binarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 1, 2, constants[0], constants[1], result->pointer, result->width, d_resultSize);
+					binarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 1, 2, constants_[0], constants_[1], result_->pointer, result_->width, d_resultSize);
 					break;
 				}
 				case(5): {
-					binarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 2, 1, constants[0], constants[1], result->pointer, result->width, d_resultSize);
+					binarySelect<<<gridSize,blockSize>>>(d_pointer, 0, 2, 1, constants_[0], constants_[1], result_->pointer, result_->width, d_resultSize);
 					break;
 				}
 				case(6): {
-					binarySelect<<<gridSize,blockSize>>>(d_pointer, 1, 2, 0, constants[0], constants[1], result->pointer, result->width, d_resultSize);
+					binarySelect<<<gridSize,blockSize>>>(d_pointer, 1, 2, 0, constants_[0], constants_[1], result_->pointer, result_->width, d_resultSize);
 					break;
 				}
-					/*
+				/*	
 				case(7): {
 					cudaMemcpy(result->data(), d_pointer.rdfStore.pointer, storeSize * sizeof(TripleContainer), cudaMemcpyDeviceToDevice);
 					cudaMemcpy(d_resultSize, &storeSize, sizeof(int), cudaMemcpyHostToDevice);
@@ -124,7 +116,7 @@ class SelectOperation : public Operation
 	
 			cudaMemcpy(&h_resultSize, d_resultSize, sizeof(int), cudaMemcpyDeviceToHost);
 			
-			result->height  =  h_resultSize;
+			result_->height  =  h_resultSize;
 					
 			cudaFree(d_resultSize);
 		}

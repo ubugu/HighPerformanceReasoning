@@ -40,6 +40,10 @@ class Query {
 			for (auto op : select) {
 				op->rdfSelect(windowPointer, storeSize);
 			}
+			
+			for (auto op : join) {
+				op->rdfJoin();
+			}
 
 
 		}
@@ -169,3 +173,4 @@ class TimeQuery : public Query {
 
 		~TimeQuery() {}
 };
+

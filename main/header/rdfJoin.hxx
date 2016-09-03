@@ -4,8 +4,9 @@
 #include <moderngpu/context.hxx>
 #include <moderngpu/kernel_join.hxx>
 #include <moderngpu/kernel_mergesort.hxx>
-#include "types.hxx"
 
+#include "types.hxx"
+#include "operations.hxx"
 
 /*
 * Join enum to define order and which element to join
@@ -23,21 +24,32 @@ class JoinOperation : public Operation
 		Binding** innerTable;
 		Binding** outerTable;
 		
-		int innerMask[3];
-		int outerMask[3];
+		int indexes[3];
 
 	public:
-		JoinOperation(Binding** innerTable, Binding** outerTable, int innerMask[3], int outerMask[3], std::vector<std::string> variables) {
+		JoinOperation(Binding** innerTable, Binding** outerTable, int indexes[3], std::vector<std::string> variables) {
 			this->innerTable = innerTable;
 			this->outerTable = outerTable;
-			this->variables = variables;
-			std::copy(innerMask, innerMask + 3, this->innerMask);
-			std::copy(outerMask, outerMask + 3, this->outerMask);
-		};
+			this->variables_ = variables;
+			std::copy(indexes, indexes + 3, indexes);
+		}
+		
+		
+		void rdfJoin() {
+			
+			std::cout << "PRINTING TEST FOR JOIN" << std::endl;
+			std::cout << "INNER ADDRESS " << *innerTable << " OUTER ADDRESS " << *outerTable <<  std::endl;
+			std::cout << "INDEXES ARE " << indexes[0] << " " << indexes[1] << " " << indexes[2] << " " << std::endl;
+			for (auto var : variables_) {
+				std::cout << var << " - " ;
+			}
+			std::cout << std::endl;
+			std::cout << "RESULT ADDRESS IS " << &result_ << std::endl;
+			return;
+		}
 };
 
 
-void rdfJoin(Binding* innerTable, Binding* outerTable, std::vector<std::string> joinMask) {
-	return;
-}
+
+
 

@@ -1,17 +1,67 @@
 TODO
 
--Implementare projection su GPU
+-Implementare join
 
--Implementare join di join
-
--implementare risultato finale nel caso di più join
-
--migliorare reordering delle triple
-
--Settare divisione block/thread 
+-Settare divisione block/thread (per tutti gli algoritmi)
 
 -Shared memory per gpu locale
 
 -Ottimizzazzione generale
+
+
+
+
+
+
+
+
+OLD JOIN
+/**** SECTION FOR JOIN ***/
+					dense_hash_map<Operation**, std::vector<std::pair<std::string, int>*>> currentStack;
+					currentStack.set_empty_key(NULL);
+				
+					Operation* op = currentOp;
+		
+					int index = 0;
+					for (auto var : selectVariable) {
+						Operation** pair = stackOperations[var];
+						
+						if (!pair) {
+							stackOperations[var] = &op;
+						} else {
+							currentStack[pair].push_back(new std::pair<std::string,int>(var, index));
+						}
+						
+						index++;						
+					}
+
+					auto iter = currentStack.begin();	
+					auto endIt = currentStack.end();
+					while (iter != endIt) {
+						Operation** pair = iter->first;
+						auto pairVar = iter->second;
+						
+						int outerPos[3] = {-1, -1, -1};
+						int innerPos[3] = {-1, -1, -1};
+						
+						for (int i = 0; i < pairVar.size(); i++) {
+							innerPos[i] = pairVar[i]->second;
+							
+							int k = 0;
+							for(std::string var : (*pair)->getVariables()) {
+								if (pairVar[i]->first == var) {
+									outerPos[i] = k;
+									break;
+								}
+								k++;
+							}	
+						}
+						         
+						std::vector<std::string> joinedVariables = op->getVariables();
+						
+						JoinOperation* join = new JoinOperation(op->getResultAddress(), (*pair)->getResultAddress(), innerPos, outerPos, joinedVariables);
+				 		iter++;
+					}
+
 
 

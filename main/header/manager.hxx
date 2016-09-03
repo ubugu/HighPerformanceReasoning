@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdlib>
+#include <unordered_set>
 
 #include <sparsehash/dense_hash_map>
 
@@ -264,6 +265,7 @@ class QueryManager {
 			
 			std::vector<SelectOperation*> selectOperations;
 			std::vector<JoinOperation*> joinOperations;			
+			JoinOperation* currentJoin = 0;
 			dense_hash_map<std::string, Operation**> stackOperations;
 			stackOperations.set_empty_key("");
 			
@@ -276,6 +278,12 @@ class QueryManager {
 									
 									
 			std::string word = nextWord(&pointer, end, ' ');
+
+			/**JOIN VALUES**/
+			std::vector<std::string> variable_stack;
+			Operation* currentOp;
+			bool isfirst = true;		
+			/**************/
 			
 			if (word == "BASE") {
 			 	//IMPLEMENTATION OF BASE
@@ -377,91 +385,72 @@ class QueryManager {
 					const SelectArr stdArr[3] = {SelectArr::S, SelectArr::P, SelectArr::O};
 					int arr = 0;
 					
+					std::vector<std::string> addedvar;
+					int joinvar[3] = {-1, -1, -1};
+					
 					for (int i = 0; i <3; i ++ ) {
 						word = nextWord(&pointer, end, ' ');
 						
 						if (word[0] == '?') {
 							if (addAll) {
-								//CHECK FOR DUPLICATE VARIABLES
+								//CHECK FOR DUPLICATE VARIABLES, USE UNORDERER MAP
 								variables.push_back(word.substr(1));
 							}
 							selectVariable.push_back(word.substr(1));
+							
+							for (int k = 0;  k < variable_stack.size(); k++) {
+								if (variable_stack[k] == word) {
+									joinvar[i] = k;	
+								} else {
+									addedvar.push_back(word);
+								}
+							}
+														
 						} else {
 							constants.push_back(h_func(word));
 							arr += static_cast<int> (stdArr[i]);   
 						}
 						
 					}
-										
-					SelectOperation* currentOp = new SelectOperation(constants, selectVariable, arr);
-					selectOperations.push_back(currentOp);
 					
+					SelectOperation* currentselect = new SelectOperation(constants, selectVariable, arr);
+					selectOperations.push_back(currentselect);
+					
+					if (variable_stack.size() == 0) {
+						currentOp = currentselect;
+						variable_stack.insert(variable_stack.end(), addedvar.begin(), addedvar.end());
+					} else {
+						
+						if (addedvar.size() == selectVariable.size()) {
+							//FARE QUALCOSA
+							//TODO VEDERE COSA FARE SE L'ORDINE é SBAGLIATO		
+							std::cout << "NOT IMPLEMENTED YET" << std::endl;
+							exit(1);	
+						} else {
+							variable_stack.insert(variable_stack.end(), addedvar.begin(), addedvar.end());
+							JoinOperation* joinop = new JoinOperation(currentOp->getResultAddress(), currentselect->getResultAddress(), joinvar, variable_stack);
+							
+							joinOperations.push_back(joinop);
+							currentOp = joinop;
+						}
+					}
+					
+					/***PRINT***/
 					std::cout << "ADDED SELECT, total size is " << selectOperations.size() << std::endl;
 					std::cout << "values are:" << std::endl;
-					
 					std::cout << "constants" << std::endl;
 					for (int i = 0; i < constants.size(); i++) {
 						std::cout << "- " << constants[i] << std::endl;
 					}
 					
 					std::cout << "varaibles " << std::endl;
-					
 					for (int i =0; i<variables.size(); i++) {
 						std::cout << "- " << variables[i] << std::endl;
 					}
 					
 					std::cout << "ARR VALUS IS " << arr << std::endl;
+					/*** END ***/
 					
-					/**** SECTION FOR JOIN ***/
-					dense_hash_map<Operation**, std::vector<std::pair<std::string, int>*>> currentStack;
-					currentStack.set_empty_key(NULL);
-				
-					Operation* op = currentOp;
-		
-					int index = 0;
-					for (auto var : selectVariable) {
-						Operation** pair = stackOperations[var];
-						
-						if (!pair) {
-							stackOperations[var] = &op;
-						} else {
-							currentStack[pair].push_back(new std::pair<std::string,int>(var, index));
-						}
-						
-						index++;						
-					}
-
-					auto iter = currentStack.begin();	
-					auto endIt = currentStack.end();
-					while (iter != endIt) {
-						Operation** pair = iter->first;
-						auto pairVar = iter->second;
-						
-						int outerPos[3] = {-1, -1, -1};
-						int innerPos[3] = {-1, -1, -1};
-						
-						for (int i = 0; i < pairVar.size(); i++) {
-							innerPos[i] = pairVar[i]->second;
-							
-							int k = 0;
-							for(std::string var : (*pair)->getVariables()) {
-								if (pairVar[i]->first == var) {
-									outerPos[i] = k;
-									break;
-								}
-								k++;
-							}	
-						}
-						         
-						std::vector<std::string> joinedVariables = op->getVariables();
-						
-						JoinOperation* join = new JoinOperation(op->getResultAddress(), (*pair)->getResultAddress(), innerPos, outerPos, joinedVariables);
-				 		iter++;
-					}
-					
-					
-					/**** END JOIN SECTION ***/
-
 					word = nextWord(&pointer, end, ' ');
 						
 					if (word != "." && word != "}") {
