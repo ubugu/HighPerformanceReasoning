@@ -58,7 +58,7 @@ public class StreamBench
 		List timeVec = new LinkedList();
 		List timeMemVec = new LinkedList();
 
-		int N_CYCLES = 1;
+		int N_CYCLES = 50;
 		List<BindingSet> resultList = null;
 		int resultLen = 0;
 		for (int i =0; i < N_CYCLES;  i++) {
@@ -72,31 +72,35 @@ public class StreamBench
 				currentStm.add(statements.get(k));
 
 				if (currentStm.size() == 50000  ) {
+					//System.out.println(resultList.size());
 	        	       		Repository repo = new SailRepository(new MemoryStore());
         		       		repo.initialize();
 		        	        RepositoryConnection con = repo.getConnection();
 
 					con.add(currentStm);
-					String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/99> .  <http://example.org/int/0> ?p ?o }";
+					String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/9> .  <http://example.org/int/0>  ?w ?p . ?w <http://example.org/int/5> ?q  }";
 					TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 				    	TupleQueryResult result = tupleQuery.evaluate();
 				    	resultList = QueryResults.asList(result);
+					
+					for (int z =0; z < resultList.size(); z++) {
+						System.out.println(resultList.get(z));
+					}
 
+
+					
 					resultLen += resultList.size();
 					currentStm.clear();
-					System.out.println(resultLen);
-					break;
+
 				}
 			}
+
 
 			double time = System.nanoTime() - start;
 			double duration = new Double (time / (double) 1000000);
 			timeVec.add(duration);
 		}
 		
-		for (int i =0; i < resultList.size(); i++) {
-			System.out.println(resultList.get(i));
-		}
 
 		double mean = 0;
 		double memMean = 0;

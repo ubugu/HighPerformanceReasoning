@@ -117,24 +117,20 @@ class QueryManager {
 			
 			usleep(1);
 
-			 
-		
-
 			for (int i =0; i <srcSize; i++) {
-
 				
 				TripleContainer currentTriple;
  
-                                std::vector<std::string> triple;
-                                separateWords(source[i], triple, ' ');
+                std::vector<std::string> triple;
+                separateWords(source[i], triple, ' ');
 			
-			        currentTriple.subject = h_func(triple[0]);
-                                currentTriple.predicate = h_func(triple[1]);
-                                currentTriple.object = h_func(triple[2]);
+				currentTriple.subject = h_func(triple[0]);
+                currentTriple.predicate = h_func(triple[1]);
+                currentTriple.object = h_func(triple[2]);
 
 				resourcemap_[currentTriple.subject] = triple[0];
-                                resourcemap_[currentTriple.predicate] = triple[1];
-                                resourcemap_[currentTriple.object] = triple[2] ;
+                resourcemap_[currentTriple.predicate] = triple[1];
+                resourcemap_[currentTriple.object] = triple[2] ;
 
 				struct timeval tp;
 				gettimeofday(&tp, NULL);
@@ -317,7 +313,7 @@ class QueryManager {
 			
 			if (word == "TRIPLES") {
 				word = nextWord(&pointer, end, ' ');
-				step = std::stoi(word);
+				window = std::stoi(word);
 				logical = false;
 				//NEED TO CHECK IF NO INTEGER IS INSERTED
 			}
@@ -386,24 +382,38 @@ class QueryManager {
 					int arr = 0;
 					
 					std::vector<std::string> addedvar;
-					int joinvar[3] = {-1, -1, -1};
+					std::vector<int> innervar;
+					std::vector<int> outervar;
+					std::vector<int> joinindex;
 					
 					for (int i = 0; i <3; i ++ ) {
 						word = nextWord(&pointer, end, ' ');
 						
+						std::cout << "FOUND " << word << std::endl;
+						
 						if (word[0] == '?') {
+							word = word.substr(1);
 							if (addAll) {
 								//CHECK FOR DUPLICATE VARIABLES, USE UNORDERER MAP
-								variables.push_back(word.substr(1));
+								variables.push_back(word);
 							}
-							selectVariable.push_back(word.substr(1));
+							selectVariable.push_back(word);
+							
+							bool found = false;
 							
 							for (int k = 0;  k < variable_stack.size(); k++) {
+								std::cout << "word " << word << " CHECK " << k << " value " << variable_stack[k] << std::endl; 
 								if (variable_stack[k] == word) {
-									joinvar[i] = k;	
-								} else {
-									addedvar.push_back(word);
+									innervar.push_back(k);
+									outervar.push_back(selectVariable.size() - 1);
+									found = true;
+									break;
 								}
+							}
+							
+							if (!found) {
+								joinindex.push_back(selectVariable.size() - 1);
+								addedvar.push_back(word);
 							}
 														
 						} else {
@@ -413,27 +423,29 @@ class QueryManager {
 						
 					}
 					
+					
 					SelectOperation* currentselect = new SelectOperation(constants, selectVariable, arr);
 					selectOperations.push_back(currentselect);
 					
+					//CREATE JOIN OPERATION
 					if (variable_stack.size() == 0) {
 						currentOp = currentselect;
-						variable_stack.insert(variable_stack.end(), addedvar.begin(), addedvar.end());
+						variable_stack.insert(variable_stack.end(), selectVariable.begin(), selectVariable.end());
 					} else {
 						
 						if (addedvar.size() == selectVariable.size()) {
-							//FARE QUALCOSA
 							//TODO VEDERE COSA FARE SE L'ORDINE é SBAGLIATO		
 							std::cout << "NOT IMPLEMENTED YET" << std::endl;
 							exit(1);	
 						} else {
 							variable_stack.insert(variable_stack.end(), addedvar.begin(), addedvar.end());
-							JoinOperation* joinop = new JoinOperation(currentOp->getResultAddress(), currentselect->getResultAddress(), joinvar, variable_stack);
+							JoinOperation* joinop = new JoinOperation(currentOp->getResultAddress(), currentselect->getResultAddress(), innervar, outervar, joinindex, variable_stack);
 							
 							joinOperations.push_back(joinop);
 							currentOp = joinop;
 						}
 					}
+					
 					
 					/***PRINT***/
 					std::cout << "ADDED SELECT, total size is " << selectOperations.size() << std::endl;
@@ -449,6 +461,7 @@ class QueryManager {
 					}
 					
 					std::cout << "ARR VALUS IS " << arr << std::endl;
+					std::cout << "RESULT ADDRESS IS " << currentselect->getResultAddress() << std::endl;
 					/*** END ***/
 					
 					word = nextWord(&pointer, end, ' ');
@@ -480,10 +493,16 @@ class QueryManager {
 			
 			else {
 				CountQuery query(selectOperations, joinOperations, storepointer_, window);
-				count_queries_.push_back(query);						
-			}				
+				count_queries_.push_back(query);	
+				std::cout << "WINDOW SIZE IS " << window << std::endl;	
+			}
+			
+			
+			std::cout << "SELECT SIZE IS " << selectOperations.size() << " JOIN SIZE IS " << joinOperations.size() << std::endl;
+				
 		}
 };
+
 
 
 

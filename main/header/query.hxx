@@ -1,16 +1,13 @@
 #pragma once
 
 #include <cstdlib>
+#include <fstream>
 
 #include <sparsehash/dense_hash_map>
 
 #include "types.hxx"
 #include "rdfSelect.hxx"
 #include "rdfJoin.hxx"
-
-
-
-using google::dense_hash_map;
 
 
 class Query {
@@ -42,45 +39,44 @@ class Query {
 			}
 			
 			for (auto op : join) {
-				op->rdfJoin();
+				op->launcher();
 			}
 
 
 		}
+		
 
 		//TODO modificare quando si sapra come utilizzare i risultati
-		void printResults(dense_hash_map<size_t, std::string> mapH) {
+		void printResults(google::dense_hash_map<size_t, std::string> mapH) {
 
-			int w = 0;
-			for (auto op : select) {
-				if (w == 0) VALUE += op->getResult()->height;
-				
-				std::cout << "PRINTING " << w << " select" << std::endl;
-				
-				Binding* d_result = op->getResult();
-				
-				size_t* final_binding = (size_t*) malloc(d_result->height * d_result->width * sizeof(size_t));
-				cudaMemcpy(final_binding, d_result->pointer, d_result->width * sizeof(size_t) * d_result->height, cudaMemcpyDeviceToHost);
-				
-				for (int z = 0; z < d_result->table_header.size(); z++) {
-					std::cout << "header are " << d_result->table_header[z] << std::endl;
-				}
-				
-				for (int i =0; i < d_result->height; i++) {
-					for (int k = 0; k < d_result->width; k++) {
-						std::cout << "result is " << mapH[ final_binding[i + k]] << " ";
-					}
-					
-					std::cout << std::endl;
-					
-				}	
-			
-				w++;
-				cudaFree(d_result->pointer);
-			}
+			//for (auto op : select) {}
 	
+			auto op = join.back();
+			VALUE += op->getResult()->height;
 
-			for (auto op : join) {}
+				
+			std::cout << "FOUND " << op->getResult()->height << " ELEMENTS" << std::endl;
+			Binding* d_result = op->getResult();
+				 	
+			size_t* final_binding = (size_t*) malloc(d_result->height * d_result->width * sizeof(size_t));
+			cudaMemcpy(final_binding, d_result->pointer, d_result->width * sizeof(size_t) * d_result->height, cudaMemcpyDeviceToHost);
+				
+			for (int z = 0; z < d_result->table_header.size(); z++) {
+				std::cout << "header are " << d_result->table_header[z] << std::endl;
+			}
+				
+ 			
+				 
+			for (int i =0; i < d_result->height; i++) {
+				std::cout << "RESULT IS ";
+				for (int k = 0; k < d_result->width; k++) {
+					std::cout <<  mapH[ final_binding[i * d_result->width + k]] << " ";
+				}
+				std::cout << std::endl;
+				
+			}
+			
+			
 					
 		}
 		
@@ -173,4 +169,5 @@ class TimeQuery : public Query {
 
 		~TimeQuery() {}
 };
+
 

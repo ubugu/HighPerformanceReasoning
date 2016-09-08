@@ -72,7 +72,7 @@ class SelectOperation : public Operation
 			//INSERIRE DIVISIONE CORRETTA
 			int gridSize = 300;
 			int blockSize = (storeSize / gridSize) + 1;
-		
+			
 			result_ = new Binding(variables_.size(), storeSize);
 						
 			switch(arr_) {
@@ -113,7 +113,7 @@ class SelectOperation : public Operation
 		
 			}
 	
-	
+			
 			cudaMemcpy(&h_resultSize, d_resultSize, sizeof(int), cudaMemcpyDeviceToHost);
 			
 			result_->height  =  h_resultSize;

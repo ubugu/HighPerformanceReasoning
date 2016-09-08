@@ -1,10 +1,8 @@
 #pragma once
 
-//TODO 
-//VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
+
+//TODO VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
 int VALUE = 0;
-std::vector<float> timeCuVector;                
-std::vector<long int> timeExVector;
 //**END TESTING***//
 
 

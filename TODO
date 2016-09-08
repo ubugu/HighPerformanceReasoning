@@ -1,12 +1,14 @@
 TODO
 
--Implementare join
-
 -Settare divisione block/thread (per tutti gli algoritmi)
 
--Shared memory per gpu locale
+-Shared memory per gpu locale (sistemare parametri di lancio per gpu nella join)
 
 -Ottimizzazzione generale
+
+-Completare parser
+
+-Projection finale
 
 
 

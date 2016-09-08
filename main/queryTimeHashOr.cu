@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <unistd.h>
+
 #include <sparsehash/dense_hash_map>
 #include <sys/time.h>
 
@@ -10,10 +11,10 @@
 
 using google::dense_hash_map;
 
+
+
 //TODO implementare la projection su gpu
 //TODO PASSARE I TIMESTAMP DA US A MS (OVERFLOW DI DAY E HOUR)
-
-
 
 
 template<typename type_t, typename accuracy>
@@ -39,7 +40,10 @@ std::vector<accuracy> stats(std::vector<type_t> input) {
 int main(int argc, char** argv) {
  
 	using namespace std;
-	
+
+	std::vector<float> timeCuVector;                	
+	std::vector<long int> timeExVector;	
+
 	//READ STORE FROM FILE
 	ifstream rdfStoreFile (argv[1]);
 	string strInput;
@@ -48,7 +52,9 @@ int main(int argc, char** argv) {
 	while (std::getline(rdfStoreFile, strInput)) {
 		++fileLength;
 	}
-
+	
+	std::cout << "STORE SIZE IS " << fileLength << std::endl;
+		
 	rdfStoreFile.clear();
 	rdfStoreFile.seekg(0, ios::beg);
 
@@ -59,16 +65,16 @@ int main(int argc, char** argv) {
 		getline(rdfStoreFile,strInput);
 	    h_rdfStore[i]  = strInput;
 	}
-        rdfStoreFile.close();
+    rdfStoreFile.close();
 	//END RDF READ
 
 	struct timeval beginT, endT;
 	
 	cudaDeviceReset();
 
-        size_t BUFFER_SIZE = 400000;
+    size_t BUFFER_SIZE = 400000;
   
-        int N_CYCLE = 1;
+    int N_CYCLE = 1;
 
 	for (int i = 0; i < N_CYCLE; i++) {
 
@@ -77,7 +83,9 @@ int main(int argc, char** argv) {
 		QueryManager manager(h_rdfStore, fileLength, BUFFER_SIZE);
 					
 		try {
-			manager.parseQuery("FROM STREAM <streamUri> RANGE TRIPLES 50000 SELECT ?s WHERE { ?s <http://example.org/int/8> <http://example.org/int/99> } ");
+			//TODO controllare errore se manca sapazio finale? 
+		//	manager.parseQuery("FROM STREAM <streamUri> RANGE TRIPLES 7000 SELECT ?s WHERE { ?p ?s <http://example.org/int/9> . <http://example.org/int/90> ?w ?p } ");
+			manager.parseQuery(argv[2]);
 		}
 		catch (std::string exc) {
 			std::cout << "Exception raised: " << exc << std::endl;
@@ -96,9 +104,10 @@ int main(int argc, char** argv) {
 	}
 
 	std::vector<float> statistics = stats<float, float>(timeCuVector);	
-        cout << "mean cuda time " << statistics[0] << endl;
-        cout << "variance cuda time " << statistics[1] << endl;
+    cout << "mean cuda time " << statistics[0] << endl;
+    cout << "variance cuda time " << statistics[1] << endl;
 	cout << "FINAL VALUE IS " << VALUE << std::endl;
 				
-        return 0;
+    return 0;
 }
+
