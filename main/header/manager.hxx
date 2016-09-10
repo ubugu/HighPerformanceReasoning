@@ -39,7 +39,7 @@ class QueryManager {
 		std::vector<CountQuery> count_queries_;
 		std::vector<TripleContainer> storebuffer_;
 		
-		CircularBuffer<long int> timestamp_pointer_;
+		CircularBuffer<unsigned long int> timestamp_pointer_;
 		CircularBuffer<TripleContainer> storepointer_;	
     		dense_hash_map<size_t, std::string> resourcemap_;
 		
@@ -48,7 +48,7 @@ class QueryManager {
 			this->srcSize = srcSize;
 			this->source = source;
 			
-			timestamp_pointer_.pointer = (long int*) malloc(buffSize * sizeof(long int));
+			timestamp_pointer_.pointer = (unsigned long int*) malloc(buffSize * sizeof(unsigned long int));
 			timestamp_pointer_.size = buffSize;
 			
 			cudaMalloc(&storepointer_.pointer, buffSize * sizeof(TripleContainer));
@@ -98,7 +98,7 @@ class QueryManager {
 			for (auto &query : time_queries_) {
 				if (query.isReady(timestamp_pointer_.pointer[timestamp_pointer_.end - 1])) {
 					advancestorepointer_();
-					query.setWindowEnd(storepointer_.end - 1);		
+					query.setWindowEnd(storepointer_.end - 1);							
 					query.launch();
 					query.printResults(resourcemap_);
 					query.setWindowEnd(1);
@@ -109,60 +109,68 @@ class QueryManager {
 		void start() {
 			struct timeval startingTs;
 			gettimeofday(&startingTs, NULL);
-			long int ts = startingTs.tv_sec * 1000000 + startingTs.tv_usec;
+			unsigned long int ts = startingTs.tv_sec * 1000 + startingTs.tv_usec / (1000);
 
 			for (auto &query : time_queries_) {
 				query.setStartingTimestamp(ts);
 			}
 			
 			usleep(1);
-
 			for (int i =0; i <srcSize; i++) {
 				
 				TripleContainer currentTriple;
  
-                std::vector<std::string> triple;
-                separateWords(source[i], triple, ' ');
+				std::vector<std::string> triple;
+				separateWords(source[i], triple, ' ');
 			
 				currentTriple.subject = h_func(triple[0]);
-                currentTriple.predicate = h_func(triple[1]);
-                currentTriple.object = h_func(triple[2]);
+				currentTriple.predicate = h_func(triple[1]);
+				currentTriple.object = h_func(triple[2]);
 
 				resourcemap_[currentTriple.subject] = triple[0];
-                resourcemap_[currentTriple.predicate] = triple[1];
-                resourcemap_[currentTriple.object] = triple[2] ;
+				resourcemap_[currentTriple.predicate] = triple[1];
+  		       		resourcemap_[currentTriple.object] = triple[2] ;
+
+
 
 				struct timeval tp;
 				gettimeofday(&tp, NULL);
-				long int ms = tp.tv_sec * 1000000 + tp.tv_usec;
-
+				unsigned long int ms = 0;
+				if (triple.size() == 5) {
+					ms = std::stol(triple[4]);
+					if (i == 0) {
+						for (auto &query : time_queries_) {
+							query.setStartingTimestamp(ms - 1);
+						}
+					}
+				} else {
+					ms = tp.tv_sec * 1000 + tp.tv_usec / (1000);
+				}
 
 				timestamp_pointer_.pointer[timestamp_pointer_.end] = ms;
 				timestamp_pointer_.end = (timestamp_pointer_.end + 1) % timestamp_pointer_.size;
 				timestamp_pointer_.begin = timestamp_pointer_.end;
 				
 				storebuffer_.push_back(currentTriple);
-							
 				checkStep();
-
+				
 			}
 			
 			//TODO vedere se occorre tenere o no quest'ultima parte
-			//***** REMOVE IN FINAL CODE: ONLY FOR TEST (FORSE) *****
-			//DA OTTIMIZZARE POICHE VIENE LANCIATO ANCHE QUANDO NON SERVE!!
-			advancestorepointer_();	 
-			for (auto &query : time_queries_)  {
-				query.setWindowEnd(storepointer_.end);
-				query.launch();
-				query.printResults(resourcemap_);
+			if (storebuffer_.size() != 0)  {
+				advancestorepointer_();	 
+				for (auto &query : time_queries_)  {
+					query.setWindowEnd(storepointer_.end);
+					query.launch();
+					query.printResults(resourcemap_);
+				}
+		
+				for (auto &query :count_queries_) {
+					query.setWindowEnd(storepointer_.end);
+					query.launch();
+					query.printResults(resourcemap_);
+				}
 			}
-			
-			for (auto &query :count_queries_) {
-				query.setWindowEnd(storepointer_.end);
-				query.launch();
-				query.printResults(resourcemap_);
-			}
-			//***** END REMOVE PART-*****			
 		}
 		
 		
@@ -213,31 +221,31 @@ class QueryManager {
 			return true;
 		}
 		
-		long int timeParse(std:: string word) {
+		unsigned long int timeParse(std:: string word) {
 			char last = word[word.length() -1];
 			//U_SEC TIME
-			long int time = 0;
+			unsigned long int time = 0;
 			
 			if (last == 's') {
 				if (word[word.length() - 2] == 'm') {
-					time = 1000 * stoi(word.substr(0, word.length() -2));
+					time = stoul(word.substr(0, word.length() -2));
 				}
 				
 				else {
-					time = 1000000 * stoi(word.substr(0, word.length() -1));
+					time = 1000 * stoul(word.substr(0, word.length() -1));
 				}	
 			}
 			
 			else if (last == 'm') {
-				time = 60 * (long int) 1000000 * stoi(word.substr(0, word.length() -1));				
+				time = 60 * (unsigned long int) 1000 * stoul(word.substr(0, word.length() -1));				
 			}
 			
 			else if (last == 'h') {
-				time = 60 * 60 * (long int) 1000000 * stoi(word.substr(0, word.length() -1));					
+				time = 60 * 60 * (unsigned long int) 1000 * stoul(word.substr(0, word.length() -1));					
 			}
 			
 			else if (last == 'd') {
-				time = 24 * 60 * 60 * (long int) 1000000 * stoi(word.substr(0, word.length() -1));		
+				time = 24 * 60 * 60 * (unsigned long int) 1000 * stoul(word.substr(0, word.length() -1));		
 			}
 			
 			else {
@@ -261,13 +269,12 @@ class QueryManager {
 			
 			std::vector<SelectOperation*> selectOperations;
 			std::vector<JoinOperation*> joinOperations;			
-			JoinOperation* currentJoin = 0;
 			dense_hash_map<std::string, Operation**> stackOperations;
 			stackOperations.set_empty_key("");
 			
 			bool logical = false;
-			long int window = 0;
-			long int step = 0;
+			unsigned long int window = 0;
+			unsigned long int step = 0;
 			
 			
 			bool addAll = false;
@@ -278,18 +285,17 @@ class QueryManager {
 			/**JOIN VALUES**/
 			std::vector<std::string> variable_stack;
 			Operation* currentOp;
-			bool isfirst = true;		
 			/**************/
 			
 			if (word == "BASE") {
-			 	//IMPLEMENTATION OF BASE
+			 	//TODO IMPLEMENTATION OF BASE
 			}
 			
 			while(word == "PREFIX") {
 				std::string prefix = nextWord(&pointer, end, ':');
 				std::string prefixUri = nextWord(&pointer, end, ' ');
 				prefixes[prefix] = prefixUri;
-				//CHECK DUPLICATE PREFIX
+				//TODO CHECK DUPLICATE PREFIX
 				word = nextWord(&pointer, end, ' ');				
 			}
 			
@@ -298,12 +304,12 @@ class QueryManager {
 			testWord("FROM", word);
 			word = nextWord(&pointer, end, ' ');				
 			
-			//'NAMED' TOKEN
+			//TODO 'NAMED' TOKEN
 		
 			testWord("STREAM", word);
 			
 						
-			//INDETIFY WHAT TO DO WITH STREAM IRI	
+			//TODO INDETIFY WHAT TO DO WITH STREAM IRI	
 			std::string streamIri = nextWord(&pointer, end, ' ');				
 
 			word = nextWord(&pointer, end, ' ');			
@@ -313,13 +319,14 @@ class QueryManager {
 			
 			if (word == "TRIPLES") {
 				word = nextWord(&pointer, end, ' ');
-				window = std::stoi(word);
+				window = std::stoul(word);
 				logical = false;
-				//NEED TO CHECK IF NO INTEGER IS INSERTED
+				//TODO NEED TO CHECK IF NO INTEGER IS INSERTED
 			}
 			
 			else {
-				//VERIFICARE SE RICEVO UN INT SEGUITO DA UNIT° DI MISURA / SPAZIO VALIDO O NO
+				//TODO VERIFICARE SE RICEVO UN INT SEGUITO DA UNIT° DI MISURA / SPAZIO VALIDO O NO
+				logical = true;
 				window = timeParse(word);
 				
 				word = nextWord(&pointer, end, ' ');							
@@ -394,8 +401,9 @@ class QueryManager {
 						if (word[0] == '?') {
 							word = word.substr(1);
 							if (addAll) {
-								//CHECK FOR DUPLICATE VARIABLES, USE UNORDERER MAP
-								variables.push_back(word);
+								if (std::find(variables.begin(), variables.end(), word) == variables.end()) {
+									variables.push_back(word);
+								} 								
 							}
 							selectVariable.push_back(word);
 							
@@ -447,22 +455,6 @@ class QueryManager {
 					}
 					
 					
-					/***PRINT***/
-					std::cout << "ADDED SELECT, total size is " << selectOperations.size() << std::endl;
-					std::cout << "values are:" << std::endl;
-					std::cout << "constants" << std::endl;
-					for (int i = 0; i < constants.size(); i++) {
-						std::cout << "- " << constants[i] << std::endl;
-					}
-					
-					std::cout << "varaibles " << std::endl;
-					for (int i =0; i<variables.size(); i++) {
-						std::cout << "- " << variables[i] << std::endl;
-					}
-					
-					std::cout << "ARR VALUS IS " << arr << std::endl;
-					std::cout << "RESULT ADDRESS IS " << currentselect->getResultAddress() << std::endl;
-					/*** END ***/
 					
 					word = nextWord(&pointer, end, ' ');
 						
@@ -487,14 +479,14 @@ class QueryManager {
 			
 			
 			if (logical == true) {
-				TimeQuery query(selectOperations, joinOperations, storepointer_, timestamp_pointer_, window, step);
+				std::cout << "WINDOW SIZE IS " << window << " STEP SIZE IS " << step << std::endl;
+				TimeQuery query(selectOperations, joinOperations, storepointer_, timestamp_pointer_, variables, window, step);
 				time_queries_.push_back(query);
 			}
 			
 			else {
-				CountQuery query(selectOperations, joinOperations, storepointer_, window);
+				CountQuery query(selectOperations, joinOperations, storepointer_, variables, window);
 				count_queries_.push_back(query);	
-				std::cout << "WINDOW SIZE IS " << window << std::endl;	
 			}
 			
 			

@@ -1,0 +1,3 @@
+mean cuda time 284.061
+variance cuda time 4.42188
+

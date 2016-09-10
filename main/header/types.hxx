@@ -41,14 +41,17 @@ struct Binding {
 	size_t* pointer;
 	int width;
 	int height;
-	std::vector<std::string> table_header;
-	
+
 	Binding() {}
 	
 	Binding(int width, int height) {
 		cudaMalloc(&pointer, width * height *  sizeof(size_t));
 		this->width = width;
 		this->height = height;
+	}
+	
+	~Binding(){
+		cudaFree(pointer);
 	}
 };
 

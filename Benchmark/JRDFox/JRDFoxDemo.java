@@ -15,17 +15,19 @@ import uk.ac.ox.cs.JRDFox.Prefixes;
 import uk.ac.ox.cs.JRDFox.JRDFoxException;
 import uk.ac.ox.cs.JRDFox.model.Individual;
 import uk.ac.ox.cs.JRDFox.model.GroundTerm;
+import mydomain.CircularBuffer;	
 
 public class JRDFoxDemo {
 
 	public static void main(String[] args) throws Exception {
-                File file =  new File("../../rdfStore/str500.txt");
+                File file =  new File("../../rdfStore/strts500.txt");
 
 		List<String[]> statements = new ArrayList<String[]>();
+		List<Long> timestamps = new ArrayList<Long>();
 
+		//READ FROM FILE
 		FileInputStream fis = new FileInputStream(file);
 		BufferedReader br = new BufferedReader(new InputStreamReader(fis));
-
 		String line = null;
 		while ((line = br.readLine()) != null) {
 			String[] parts = line.split(" ");
@@ -38,45 +40,83 @@ public class JRDFoxDemo {
 			triple[1] = parts[1];
 			triple[2] = parts[2];
 			statements.add(triple);
+			
+			if (parts.length==5) {   
+				timestamps.add(Long.parseLong(parts[4].substring(0, parts[4].length() - 3)));
+			}
 		}
 		br.close();
-		int totalRes = 0;
-		System.out.println("Elements "  + statements.size());
-		int N_CYCLES = 10;
+		
+		int N_CYCLES = 1;
 
+		int totalRes = 0;
 		List timeVec = new LinkedList();
 
 		for (int i =0; i <N_CYCLES; i++)
 		{
-			System.out.println(i);
-			List<Individual> stmt = new LinkedList<Individual>();
 			double start = System.nanoTime();
+			LinkedList<Individual> stmt = new LinkedList<Individual>();	
+			int bufferSize = 400000;		
+			CircularBuffer<Long> timestampBuffer = new CircularBuffer<Long>(bufferSize, new Long[bufferSize]);
+			Long  currentTimestamp = timestamps.get(0) - 1;
+
+			int windowTime = Integer.parseInt(args[1]);
+			int stepTime = Integer.parseInt(args[2]);;
 			for (int k=0; k <statements.size(); k++)
 			{
-				stmt.add(Individual.create(statements.get(k)[0]));
-                                stmt.add(Individual.create(statements.get(k)[1]));
-                                stmt.add(Individual.create(statements.get(k)[2]));
+				timestampBuffer.buffer[k % bufferSize] = timestamps.get(k);
+				timestampBuffer.end = k % timestampBuffer.size;
 
-				if (stmt.size() == 50000 * 3) {
+				if ( timestampBuffer.buffer[k % bufferSize] > currentTimestamp +  windowTime) {
+					System.out.println("STARTED");
+					while(timestampBuffer.buffer[timestampBuffer.begin] <= currentTimestamp) {
+						timestampBuffer.begin = (timestampBuffer.begin + 1) % timestampBuffer.size;
+						stmt.removeFirst();
+						stmt.removeFirst();
+						stmt.removeFirst();						
+					}
+
 		                        DataStore store = new DataStore(DataStore.StoreType.Sequential);
-
-	                        	store.addTriples(stmt.toArray(new Individual[stmt.size()]));
+					Individual[] arrstmt = stmt.toArray(new Individual[stmt.size()]); 
+	                        	store.addTriples(arrstmt);
 					Prefixes prefixes = Prefixes.DEFAULT_IMMUTABLE_INSTANCE;
-					TupleIterator tupleIterator = store.compileQuery("SELECT DISTINCT * WHERE{ ?s ?p  <http://example.org/int/99> . <http://example.org/int/0> ?p ?o }", prefixes, new Parameters());
+					TupleIterator tupleIterator = store.compileQuery(args[0], prefixes, new Parameters());
 
 					totalRes += evaluateAndPrintResults(prefixes, tupleIterator);
 
 					tupleIterator.dispose();
-
-					stmt.clear();
 					store.dispose();
+					currentTimestamp += stepTime;
 				}
+
+				stmt.add(Individual.create(statements.get(k)[0]));
+                                stmt.add(Individual.create(statements.get(k)[1]));
+                                stmt.add(Individual.create(statements.get(k)[2]));
+                        }
+			
+			if ( stmt.size() != 0) {
+					
+				while(timestampBuffer.buffer[timestampBuffer.begin] <= currentTimestamp) {
+					timestampBuffer.begin = (timestampBuffer.begin + 1) % timestampBuffer.size;
+					stmt.removeFirst();
+					stmt.removeFirst();
+					stmt.removeFirst();					
+				}
+
+	                        DataStore store = new DataStore(DataStore.StoreType.Sequential);
+                        	store.addTriples(stmt.toArray(new Individual[stmt.size()]));
+				Prefixes prefixes = Prefixes.DEFAULT_IMMUTABLE_INSTANCE;
+				TupleIterator tupleIterator = store.compileQuery(args[0], prefixes, new Parameters());
+
+				totalRes += evaluateAndPrintResults(prefixes, tupleIterator);
+
+				tupleIterator.dispose();
+				store.dispose();
 			}
 
                         double time = System.nanoTime() - start;
                         double duration = new Double (time / (double) 1000000);
                         timeVec.add(duration);
-
 		}
 		System.out.println("Number of total results are " + totalRes);
 

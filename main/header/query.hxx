@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <unordered_set>
 
 #include <sparsehash/dense_hash_map>
 
@@ -15,12 +16,14 @@ class Query {
 		std::vector<SelectOperation*> select;
 		std::vector<JoinOperation*> join;
 		CircularBuffer<TripleContainer> windowPointer;
+		std::vector<std::string> variables_projection;
 
 	public:
-		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, CircularBuffer<TripleContainer> rdfPointer) {
+		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, CircularBuffer<TripleContainer> rdfPointer, std::vector<std::string> variables) {
 			this->join = join;
 			this->select = select;
 			this->windowPointer = rdfPointer;
+			this->variables_projection = variables;
 		}
 
 		virtual void setWindowEnd(int step) {
@@ -30,7 +33,6 @@ class Query {
 		/**
 		* Function for managing query execution
 		**/
-		//TODO Verificare se si puo migliorare
 		void startQuery() {
 			int storeSize =  windowPointer.getLength();			
 			
@@ -48,36 +50,47 @@ class Query {
 
 		//TODO modificare quando si sapra come utilizzare i risultati
 		void printResults(google::dense_hash_map<size_t, std::string> mapH) {
-
-			//for (auto op : select) {}
-	
-			auto op = join.back();
-			VALUE += op->getResult()->height;
-
-				
+			
+			
+			Operation* op;
+			if (join.size() == 0) {
+				op = select.back();
+			} else {
+				op = join.back();
+			}
+			
 			std::cout << "FOUND " << op->getResult()->height << " ELEMENTS" << std::endl;
+			
 			Binding* d_result = op->getResult();
+			std::vector<std::string> variables = op->getVariables();
 				 	
 			size_t* final_binding = (size_t*) malloc(d_result->height * d_result->width * sizeof(size_t));
 			cudaMemcpy(final_binding, d_result->pointer, d_result->width * sizeof(size_t) * d_result->height, cudaMemcpyDeviceToHost);
-				
-			for (int z = 0; z < d_result->table_header.size(); z++) {
-				std::cout << "header are " << d_result->table_header[z] << std::endl;
-			}
-				
- 			
-				 
+	
+			std::vector<std::string> output;
+	
 			for (int i =0; i < d_result->height; i++) {
-				std::cout << "RESULT IS ";
+				int currentVariable = 0;
 				for (int k = 0; k < d_result->width; k++) {
-					std::cout <<  mapH[ final_binding[i * d_result->width + k]] << " ";
+					if (variables_projection[currentVariable] == variables[k]) {
+						output.push_back(mapH[ final_binding[i * d_result->width + k]]);
+						//std::cout << variables_projection[currentVariable] << "=" <<  mapH[ final_binding[i * d_result->width + k]] << " ";
+						currentVariable++;
+					}
 				}
-				std::cout << std::endl;
-				
+				//std::cout << std::endl;
+			}			
+			VALUE += op->getResult()->height;
+
+			for (auto op : select) {
+				delete(op->getResult());
 			}
 			
-			
-					
+			for (auto op : join) {
+				delete(op->getResult());
+			}
+
+			//TODO aggiungere clear della memoria dei risultati 		
 		}
 		
 	
@@ -92,7 +105,7 @@ class CountQuery : public Query {
 	public:
 		CountQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
 			CircularBuffer<TripleContainer> rdfPointer,
-			int count) : Query(select, join, rdfPointer) {
+			std::vector<std::string> variables, int count) : Query(select, join, rdfPointer, variables) {
 
 				this->count = count;
 				this->currentCount = 0;
@@ -117,16 +130,16 @@ class CountQuery : public Query {
 
 class TimeQuery : public Query {
 	private:
-		CircularBuffer<long int> timestampPointer;
-		//TIME IS IN U_SEC
-		long int stepTime;
-		long int windowTime;
-		long int lastTimestamp;
+		CircularBuffer<unsigned long int> timestampPointer;
+		//TIME IS IN M_SEC
+		unsigned long int stepTime;
+		unsigned long int windowTime;
+		unsigned long int lastTimestamp;
 		
 	public:
 		TimeQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
-			CircularBuffer<TripleContainer> rdfPointer, CircularBuffer<long int> timestampPointer,
-			int windowTime, int stepTime) : Query(select, join, rdfPointer) {
+			CircularBuffer<TripleContainer> rdfPointer, CircularBuffer<unsigned long int> timestampPointer,
+			std::vector<std::string> variables, int windowTime, int stepTime) : Query(select, join, rdfPointer, variables) {
 				this->stepTime = stepTime;
 				this->windowTime = windowTime;
 				
@@ -139,11 +152,11 @@ class TimeQuery : public Query {
 			timestampPointer.end = step;
 		}
 
-		bool isReady(long int newTimestamp) {
+		bool isReady(unsigned long int newTimestamp) {
 			return (lastTimestamp + windowTime < newTimestamp);
 		}
 
-		void setStartingTimestamp(long int timestamp) {
+		void setStartingTimestamp(unsigned long int timestamp) {
 			this->lastTimestamp = timestamp;
 		}
 

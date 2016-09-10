@@ -83,15 +83,12 @@ int main(int argc, char** argv) {
 		QueryManager manager(h_rdfStore, fileLength, BUFFER_SIZE);
 					
 		try {
-			//TODO controllare errore se manca sapazio finale? 
-		//	manager.parseQuery("FROM STREAM <streamUri> RANGE TRIPLES 7000 SELECT ?s WHERE { ?p ?s <http://example.org/int/9> . <http://example.org/int/90> ?w ?p } ");
 			manager.parseQuery(argv[2]);
 		}
 		catch (std::string exc) {
 			std::cout << "Exception raised: " << exc << std::endl;
 			exit(1);
 		}
-		
 		manager.start();
 		cudaDeviceSynchronize();
 		gettimeofday(&endT, NULL);

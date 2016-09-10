@@ -17,26 +17,39 @@ import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.sail.SailRepository;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.sail.memory.MemoryStore;
-
+import mydomain.CircularBuffer;	
 
 /**
  * Hello world!
  *
  */
+ 
+
+ 
 public class StreamBench
 {
+
+
+
+
+
     public static void main( String[] args ) throws IOException
     {
 
       	try {
-		int FILE_LENGHT = 302924;
-                File file =  new File("../../rdfStore/str500.txt");
+      		if (args.length < 3) {
+      			System.out.println("ERROR INCORRECT INPUT VALUES; THE VALUES ARE: QUERY, WINDOW, STEP");
+      			return; 
+      		}
+      		
+                File file =  new File("../../rdfStore/strts500.txt");
 		List<SimpleStatement> statements = new ArrayList<SimpleStatement>();
-
+		List<Long> timestamps = new ArrayList<Long>();
+		
+		//Reading input from file to main memory
 		FileInputStream fis = new FileInputStream(file);
 		BufferedReader br = new BufferedReader(new InputStreamReader(fis));
 		ValueFactory factory = SimpleValueFactory.getInstance();
-
 		String line = null;
 		while ((line = br.readLine()) != null) {
 			String[] parts = line.split(" ");
@@ -49,52 +62,90 @@ public class StreamBench
 			IRI obj = factory.createIRI(parts[2]);
 			SimpleStatement statement = (SimpleStatement) factory.createStatement(sub, pre, obj);
 			statements.add(statement);
+			
+			if (parts.length == 5) {                                                                                                                                                                                                    
+				timestamps.add(Long.parseLong(parts[4].substring(0, parts[4].length() - 3)));
+
+				
+			}			
 		}
-
 		br.close();
-
-		Iterable<SimpleStatement> iter = statements;
-
+	
 		List timeVec = new LinkedList();
-		List timeMemVec = new LinkedList();
+		
 
-		int N_CYCLES = 50;
+		int N_CYCLES = 1;
 		List<BindingSet> resultList = null;
 		int resultLen = 0;
 		for (int i =0; i < N_CYCLES;  i++) {
-			System.out.println(i);
+
 			double start = System.nanoTime();
-			List<SimpleStatement> currentStm = new LinkedList<SimpleStatement>();
+			LinkedList<SimpleStatement> currentStm = new LinkedList<SimpleStatement>();
+			
+			int bufferSize = 400000;		
+			CircularBuffer<Long> timestampBuffer = new CircularBuffer<Long>(bufferSize, new Long[bufferSize]);
+			Long  currentTimestamp = timestamps.get(0) - 1;
+	
+			int windowTime = Integer.parseInt(args[1]);
+			int stepTime = Integer.parseInt(args[2]);
+			
 			for (int k = 0; k < statements.size(); k++)
 			{
-				//System.out.println("value of k is " + k);
-
-				currentStm.add(statements.get(k));
-
-				if (currentStm.size() == 50000  ) {
-					//System.out.println(resultList.size());
-	        	       		Repository repo = new SailRepository(new MemoryStore());
-        		       		repo.initialize();
-		        	        RepositoryConnection con = repo.getConnection();
-
+				timestampBuffer.buffer[k % bufferSize] = timestamps.get(k);
+				timestampBuffer.end = k % timestampBuffer.size;
+								
+				if ( timestampBuffer.buffer[k % bufferSize] > currentTimestamp +  windowTime ) {
+		
+					while(timestampBuffer.buffer[timestampBuffer.begin] <= currentTimestamp) {
+						timestampBuffer.begin = (timestampBuffer.begin + 1) % timestampBuffer.size;
+						currentStm.removeFirst();
+					}
+					
+					Repository repo = new SailRepository(new MemoryStore());
+					repo.initialize();
+					RepositoryConnection con = repo.getConnection();	
 					con.add(currentStm);
-					String queryString = "SELECT * WHERE {?s ?p  <http://example.org/int/9> .  <http://example.org/int/0>  ?w ?p . ?w <http://example.org/int/5> ?q  }";
+					String queryString = args[0];
 					TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 				    	TupleQueryResult result = tupleQuery.evaluate();
 				    	resultList = QueryResults.asList(result);
+										
+					resultLen += resultList.size();                      
 					
-					for (int z =0; z < resultList.size(); z++) {
-						System.out.println(resultList.get(z));
-					}
-
+					currentTimestamp += stepTime;
+					
 
 					
-					resultLen += resultList.size();
-					currentStm.clear();
+					System.out.println("FOUND " + resultList.size());
 
 				}
+				currentStm.add(statements.get(k));
+				
 			}
-
+			
+			
+			if ( currentStm.size() != 0) {
+				
+				while(timestampBuffer.buffer[timestampBuffer.begin] <= currentTimestamp) {
+					timestampBuffer.begin = (timestampBuffer.begin + 1) % timestampBuffer.size;
+					currentStm.removeFirst();
+				}
+				Repository repo = new SailRepository(new MemoryStore());
+				repo.initialize();
+				RepositoryConnection con = repo.getConnection();	
+				con.add(currentStm);
+				String queryString = args[0];
+				TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
+			    	TupleQueryResult result = tupleQuery.evaluate();
+			    	resultList = QueryResults.asList(result);
+									
+				resultLen += resultList.size();
+				currentStm.clear();
+				
+				currentTimestamp += stepTime;
+				
+				System.out.println("FOUND " + resultList.size());
+			}
 
 			double time = System.nanoTime() - start;
 			double duration = new Double (time / (double) 1000000);
@@ -103,9 +154,7 @@ public class StreamBench
 		
 
 		double mean = 0;
-		double memMean = 0;
 		double variance = 0;
-		double memVariance = 0;
 
 		for (Object value : timeVec) {
 			Double value2 = (Double) value;
@@ -121,7 +170,6 @@ public class StreamBench
 
 		System.out.println("Execution Variance is " + variance);
 		System.out.println("Execution Mean is " + mean);
-
 		System.out.println("Total lenght is " + resultLen);
 
 

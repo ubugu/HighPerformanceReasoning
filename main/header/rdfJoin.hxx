@@ -234,6 +234,9 @@ class JoinOperation : public Operation
 			//TODO togliere params per gpu su sola1
 			mergesort<launch_params_t<128, 2>>(innertemp, (*innerTable)->height, *innersorter, context);
 			mergesort<launch_params_t<128, 2>>(outertemp, (*outerTable)->height , *outersorter, context);
+			
+//			mergesort(innertemp, (*innerTable)->height, *innersorter, context);
+//			mergesort(outertemp, (*outerTable)->height , *outersorter, context);
 	
 			//TODO  vedere se rimuovere costraint anche di align
 			//Need to made row width equal and align in the same position the join varaibles
