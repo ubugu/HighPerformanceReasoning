@@ -50,7 +50,6 @@ class RowComparator
 
 template<int srcsize, int destsize>
 __global__ void reduceCopy(Row<srcsize>* src, Row<destsize>* dest, int* srcpos, int* destpos, int width, int maxindex) {
-
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	
 	if (index >= maxindex) {
@@ -242,6 +241,7 @@ class JoinOperation : public Operation
 			//Need to made row width equal and align in the same position the join varaibles
 			Row<outersize>* reducedinner;
 			bool isreduced = !(innersize == outersize && innervar == outervar);
+			
 			if (!isreduced) {
 				reducedinner = reinterpret_cast<Row<outersize>*>( innertemp);
 			} else  {
@@ -255,13 +255,12 @@ class JoinOperation : public Operation
 				cudaMemcpy(reduceindex, &innervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
 				cudaMemcpy(destpos, &outervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
 
-				reduceCopy<<<20,  ((*innerTable)->height/20) + 1>>>(innertemp, reducedinner, reduceindex, destpos, joinsize, (*innerTable)->height);
+				reduceCopy<<<300,  ((*innerTable)->height/300) + 1>>>(innertemp, reducedinner, reduceindex, destpos, joinsize, (*innerTable)->height);
 	
 				cudaFree(reduceindex);
 				cudaFree(destpos);
 			}
 	
-			
 			mem_t<int2> joinResult = inner_join<launch_params_t<128, 2>>( reducedinner, (*innerTable)->height, outertemp, (*outerTable)->height,  *outersorter, context);
 			result_ = new Binding(variables_.size(), joinResult.size());
 			
@@ -269,7 +268,7 @@ class JoinOperation : public Operation
 			cudaMalloc(&d_copyindex, sizeof(int) * copyindex.size());
 			cudaMemcpy(d_copyindex, &copyindex[0], sizeof(int) * copyindex.size(), cudaMemcpyHostToDevice);
 
-			int gridsize = 10;
+			int gridsize = 50;
 			int blocksize = (joinResult.size() / gridsize) + 1;			
 			indexCopy<<<gridsize, blocksize>>>(result_->pointer, innertemp, outertemp, d_copyindex, (*innerTable)->width, copyindex.size(), joinResult.data(), joinResult.size());
 

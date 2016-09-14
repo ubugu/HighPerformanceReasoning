@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
 
     size_t BUFFER_SIZE = 400000;
   
-    int N_CYCLE = 50;
+    int N_CYCLE = 1;
 
 	for (int i = 0; i < N_CYCLE; i++) {
 

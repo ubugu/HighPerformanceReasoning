@@ -35,7 +35,7 @@ class Query {
 		**/
 		void startQuery() {
 			int storeSize =  windowPointer.getLength();			
-			
+
 			for (auto op : select) {
 				op->rdfSelect(windowPointer, storeSize);
 			}
@@ -54,8 +54,10 @@ class Query {
 			
 			Operation* op;
 			if (join.size() == 0) {
+				std::cout << "LAST SELECT" << std::endl;
 				op = select.back();
 			} else {
+				std::cout << "LAST JOIN" << std::endl;
 				op = join.back();
 			}
 			
