@@ -51,7 +51,12 @@ public class JRDFoxDemo {
 
 		int totalRes = 0;
 		List timeVec = new LinkedList();
-
+		List queryVec = new LinkedList();
+		List indexVec = new LinkedList();
+		List storeVec = new LinkedList();
+		List windowVec = new LinkedList();
+		
+		
 		for (int i =0; i <N_CYCLES; i++)
 		{
 			double start = System.nanoTime();
@@ -68,25 +73,39 @@ public class JRDFoxDemo {
 				timestampBuffer.end = k % timestampBuffer.size;
 
 				if ( timestampBuffer.buffer[k % bufferSize] > currentTimestamp +  windowTime) {
-					System.out.println("STARTED");
+					
+					double indexStart = System.nanoTime();
 					while(timestampBuffer.buffer[timestampBuffer.begin] <= currentTimestamp) {
 						timestampBuffer.begin = (timestampBuffer.begin + 1) % timestampBuffer.size;
 						stmt.removeFirst();
 						stmt.removeFirst();
 						stmt.removeFirst();						
 					}
-
-		                        DataStore store = new DataStore(DataStore.StoreType.Sequential);
+					
+					double storeStart = System.nanoTime();
+					DataStore store = new DataStore(DataStore.StoreType.Sequential);
 					Individual[] arrstmt = stmt.toArray(new Individual[stmt.size()]); 
 	                        	store.addTriples(arrstmt);
+	                        	
+	                        	double queryStart = System.nanoTime();
 					Prefixes prefixes = Prefixes.DEFAULT_IMMUTABLE_INSTANCE;
 					TupleIterator tupleIterator = store.compileQuery(args[0], prefixes, new Parameters());
-
 					totalRes += evaluateAndPrintResults(prefixes, tupleIterator);
-
+					double innerEnd = System.nanoTime();
+					
 					tupleIterator.dispose();
 					store.dispose();
 					currentTimestamp += stepTime;
+					
+					double indexDuration = new Double ((storeStart - indexStart) / (double) 1000000);
+                        		double storeDuration = new Double ((queryStart - storeStart) / (double) 1000000);
+                        		double queryDuration = new Double ((innerEnd - queryStart) / (double) 1000000);
+                        		double totalWindow = new Double((innerEnd - indexStart) / (double) 1000000);
+                        		windowVec.add(totalWindow);
+                        		queryVec.add(queryDuration);
+                        		storeVec.add(storeDuration);
+					indexVec.add(indexDuration);
+			
 				}
 
 				stmt.add(Individual.create(statements.get(k)[0]));
@@ -121,28 +140,50 @@ public class JRDFoxDemo {
 		System.out.println("Number of total results are " + totalRes);
 
 
-		double mean = 0;
-                double memMean = 0;
-                double variance = 0;
-                double memVariance = 0;
 
-                for (Object value : timeVec) {
+
+                System.out.println("Index Variance is " + getVariance(indexVec));
+                System.out.println("Index Mean is " + getMean(indexVec));
+                
+                System.out.println("Store creation Variance is " + getVariance(storeVec));
+                System.out.println("Store creation Mean is " + getMean(storeVec));
+
+                System.out.println("Query Variance is " + getVariance(queryVec));
+                System.out.println("Query Mean is " + getMean(queryVec));
+
+                System.out.println("Window Variance is " + getVariance(windowVec));
+                System.out.println("Window Mean is " + getMean(windowVec));
+
+                System.out.println("Execution Variance is " + getVariance(timeVec));
+                System.out.println("Execution Mean is " + getMean(timeVec));
+
+
+	}
+	
+	public static double getMean(List elements) {
+		double mean = 0;
+                for (Object value : elements) {
+                        Double value2 = (Double) value;
+                        mean += value2.doubleValue();
+                }
+		mean = mean / (double) elements.size();
+		return mean;
+	}
+	
+	public static double getVariance(List elements) {
+		double mean = 0;
+		double variance = 0;
+                for (Object value : elements) {
                         Double value2 = (Double) value;
                         mean += value2.doubleValue();
                         variance += value2.doubleValue() * value2.doubleValue();
-                        System.out.println(value2);
                 }
-
-                mean = mean / (double) timeVec.size();
-                variance = variance / (double) (timeVec.size());
+                
+                mean = mean / (double) elements.size();
+                variance = variance / (double) (elements.size());
                 variance = variance - mean * mean;
 
-
-
-                System.out.println("Execution Variance is " + variance);
-                System.out.println("Execution Mean is " + mean);
-
-
+		return variance;
 	}
 
 	public static int evaluateAndPrintResults(Prefixes prefixes, TupleIterator tupleIterator) throws JRDFoxException {

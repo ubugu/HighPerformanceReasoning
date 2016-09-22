@@ -177,8 +177,15 @@ class TimeQuery : public Query {
 			timestampPointer.begin = newBegin;
 			
 			//Lancuh query and print results
+			struct timeval beginK, endK;
+			gettimeofday(&beginK, NULL);	
 			startQuery();
-	
+			
+			cudaDeviceSynchronize();
+			gettimeofday(&endK, NULL);
+			float KTime = (endK.tv_sec - beginK.tv_sec ) * 1000 + ((float) endK.tv_usec - (float) beginK.tv_usec) / 1000 ;
+			timeKernelVector.push_back(KTime);
+			
 			//Update window timestamp value
 			lastTimestamp += stepTime;
 		}
