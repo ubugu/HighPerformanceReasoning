@@ -13,33 +13,27 @@
 template <int N>
 struct Row 
 {
+    unsigned int index;
     size_t element[N];
 };
 
-//Computes inner < outer when doing join to find the elements that needs to be joined
-template <int innersize, int outersize = innersize>
+//Computes inner < outer when doing join to find the elements that needs to be joine
+template<int joinsize>
 class RowComparator
 {
-	private:
-		int maskA[3] = {-1, -1, -1};
-		int maskB[3] = {-1, -1, -1};
-	public:
-		RowComparator(std::vector<int> innerMask, std::vector<int> outerMask) {
-			std::copy(innerMask.begin(), innerMask.end(), maskA);
-			std::copy(outerMask.begin(), outerMask.end(), maskB);
-		}
 		
-		MGPU_DEVICE bool operator() (Row<innersize> a, Row<outersize> b) {
+	public:	
+		MGPU_DEVICE bool operator() (Row<joinsize> a, Row<joinsize> b) {
 			        	
-			if ((maskA[0] != -1) && (a.element[maskA[0]] < b.element[maskB[0]])) {
+			if ((a.element[0] < b.element[0])) {
 				return true;
 			}
 			
-			if ((maskA[1] != -1) && (a.element[maskA[0]] == b.element[maskB[0]]) && (a.element[maskA[1]] < b.element[maskB[1]])) {
+			if ((joinsize == 2 ) && (a.element[0] == b.element[0]) && (a.element[1] < b.element[1])) {
 				return true;
 			}
 			
-			if ((maskA[2] != -1) && (a.element[maskA[0]] == b.element[maskB[0]]) && (a.element[maskA[1]] == b.element[maskB[1]]) && (a.element[maskA[2]] < b.element[maskB[2]])) {
+			if ((joinsize == 3) && (a.element[0] == b.element[0]) && (a.element[1] == b.element[1]) && (a.element[2] < b.element[2])) {
 				return true;
 			}
 			
@@ -48,37 +42,40 @@ class RowComparator
 };
 
 
-template<int srcsize, int destsize>
-__global__ void reduceCopy(Row<srcsize>* src, Row<destsize>* dest, int* srcpos, int* destpos, int width, int maxindex) {
+template<int destsize>
+__global__ void reduceCopy(size_t* src, Row<destsize>* dest, int srcwidth, int* srcpos, int joinsize, int maxindex) {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	
 	if (index >= maxindex) {
 		return;
 	}
-	for (int i = 0; i < width; i++) {
-		dest[index].element[destpos[i]] = src[index].element[srcpos[i]];
+
+	for (int i = 0; i < joinsize; i++) {
+		dest[index].element[i] = src[srcpos[i] + index * srcwidth];
 	}
+	dest[index].index = index;
 }
 
-
-template<int innersize, int outersize>
-__global__ void indexCopy(size_t* dest, Row<innersize>* innersrc, Row<outersize>* outersrc, int* indexes, int innerwidth, int outerwidth, int2* joinindex, int maxindex) {
+template<int joinsize>
+__global__ void indexCopy(size_t* dest, size_t* innersrc, Row<joinsize>* innertemp, size_t* outersrc, Row<joinsize>* outertemp, int* indexes, int innerwidth, int outerwidth, int indexsize, int2* joinindex, int maxindex) {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (index >= maxindex) {
 		return;
 	}
 	
-	int destindex = index * (innerwidth + outerwidth);
+	int destindex = index * (innerwidth + indexsize);
 	int i = 0;
 	for (; i < innerwidth; i++) {
-		dest[i + destindex] = innersrc[joinindex[index].x].element[i];
+		dest[i + destindex] = innersrc[innertemp[joinindex[index].x].index * innerwidth + i];
 	}
 
-	for (int k = 0; k < outerwidth; k++) {
-		dest[destindex + i + k] = outersrc[joinindex[index].y].element[indexes[k]];
+	for (int k = 0; k < indexsize; k++) {
+		dest[destindex + i + k] = outersrc[outertemp[joinindex[index].y].index * outerwidth + indexes[k]];
 	}
 }
+
+
 
 
 //Section for defining operation classes
@@ -106,163 +103,56 @@ class JoinOperation : public Operation
 			this->outervar = outervar;
 		}
 		
-		void launcher() {
-			std::pair<int,int> joinsize = std::make_pair((*innerTable)->width, (*outerTable)->width);
+	void launcher() {
+			assert(innervar.size() == outervar.size());
 			
-			switch(joinsize.first) {
+			switch(innervar.size()) {
 				case(1): 
-					{
-						switch(joinsize.second) {
-							case(1):
-								rdfJoin<1,1>();
-								break;
-							
-							case(2):
-								rdfJoin<1,2>();
-								break;							
-							
-							case(3):
-								rdfJoin<1,3>();
-								break;
-
-						}	
-					}
+					rdfJoin<1>();
 					break;
 
 				case(2): 
-					{
-						switch(joinsize.second) {
-							case(1):
-								rdfJoin<2,1>();
-								break;
-							
-							case(2):
-								rdfJoin<2,2>();
-								break;							
-							
-							case(3):
-								rdfJoin<2,3>();
-								break;
-
-						}	
-					}
+					rdfJoin<2>();
 					break;
 
 					
 				case(3): 
-					{
-						switch(joinsize.second) {
-							case(1):
-								rdfJoin<3,1>();
-								break;
-							
-							case(2):
-								rdfJoin<3,2>();
-								break;							
-							
-							case(3):
-								rdfJoin<3,3>();
-								break;
-
-						}	
-					}
+					rdfJoin<3>();
 					break;
-					
-				case(4): 
-					{
-						switch(joinsize.second) {
-							case(1):
-								rdfJoin<4,1>();
-								break;
-							
-							case(2):
-								rdfJoin<4,2>();
-								break;							
-							
-							case(3):
-								rdfJoin<4,3>();
-								break;
-
-						}	
-					}
-					break;
-
-					
-				case(5): 
-					{
-						switch(joinsize.second) {
-							case(1):
-								rdfJoin<5,1>();
-								break;
-							
-							case(2):
-								rdfJoin<5,2>();
-								break;							
-							
-							case(3):
-								rdfJoin<5,3>();
-								break;
-
-						}	
-					}
-					break;					
 			}
 		}
 		
-		template<int innersize, int outersize>
-		void rdfJoin() {	
-			Row<innersize>* innertemp;
-			Row<outersize>* outertemp;
-				
-			if ((sizeof(*innertemp)  == (*innerTable)->width * sizeof(size_t)) && (sizeof(*outertemp) == (*outerTable)->width * sizeof(size_t))) {
-				innertemp = reinterpret_cast<Row<innersize>*>((*innerTable)->pointer);
-				outertemp = reinterpret_cast<Row<outersize>*>((*outerTable)->pointer);
-			} else  {
-				//TODO IMPLEMENTARE
-				std::cout << "ALIGNMENT IS DIFFERENT; NOT IMPLEMENTED YET " << std::endl;
-				exit(-1);
-			}
-			
-			
+		template<int joinsize>
+		void rdfJoin() {		
 			using namespace mgpu;
 			standard_context_t context;
 			
-			RowComparator<innersize>* innersorter = new RowComparator<innersize>(innervar, innervar);
-			RowComparator<outersize>* outersorter = new RowComparator<outersize>(outervar, outervar);
+			Row<joinsize>* innertemp;
+			Row<joinsize>* outertemp;
+			cudaMalloc(&innertemp, sizeof(Row<joinsize>) * (*innerTable)->height);
+			cudaMalloc(&outertemp, sizeof(Row<joinsize>) * (*outerTable)->height);
+
+ 			int* innerindex;
+			int* outerindex;
+			cudaMalloc(&innerindex, sizeof(int) * joinsize);
+			cudaMalloc(&outerindex, sizeof(int) * joinsize);
+			cudaMemcpy(innerindex, &innervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
+			cudaMemcpy(outerindex, &outervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
+			reduceCopy<<<100,  ((*innerTable)->height/100) + 1>>>((*innerTable)->pointer, innertemp, (*innerTable)->width, innerindex, joinsize, (*innerTable)->height);
+			reduceCopy<<<100,  ((*outerTable)->height/100) + 1>>>((*outerTable)->pointer, outertemp, (*outerTable)->width, outerindex, joinsize, (*outerTable)->height);
+
+			RowComparator<joinsize>* sorter = new RowComparator<joinsize>();
 	
 			//TODO togliere params per gpu su sola1
-			mergesort<launch_params_t<128, 2>>(innertemp, (*innerTable)->height, *innersorter, context);
-			mergesort<launch_params_t<128, 2>>(outertemp, (*outerTable)->height , *outersorter, context);
-			
+			mergesort<launch_params_t<128, 2>>(innertemp, (*innerTable)->height, *sorter, context);
+			mergesort<launch_params_t<128, 2>>(outertemp, (*outerTable)->height , *sorter, context);
+					
 //			mergesort(innertemp, (*innerTable)->height, *innersorter, context);
 //			mergesort(outertemp, (*outerTable)->height , *outersorter, context);
 	
-			//TODO  vedere se rimuovere costraint anche di align
-			//Need to made row width equal and align in the same position the join varaibles
-			Row<outersize>* reducedinner;
-			bool isreduced = !(innersize == outersize && innervar == outervar);
-			
-			if (!isreduced) {
-				reducedinner = reinterpret_cast<Row<outersize>*>( innertemp);
-			} else  {
-				cudaMalloc(&reducedinner, sizeof(Row<outersize>) *  (*innerTable)->height);
-			
-				int* reduceindex;
-				int* destpos;
-				int joinsize = innervar.size();
-				cudaMalloc(&reduceindex, sizeof(int) * joinsize);
-				cudaMalloc(&destpos, sizeof(int) * joinsize);
-				cudaMemcpy(reduceindex, &innervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
-				cudaMemcpy(destpos, &outervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
-
-				reduceCopy<<<300,  ((*innerTable)->height/300) + 1>>>(innertemp, reducedinner, reduceindex, destpos, joinsize, (*innerTable)->height);
-	
-				cudaFree(reduceindex);
-				cudaFree(destpos);
-			}
-	
-			mem_t<int2> joinResult = inner_join<launch_params_t<128, 2>>( reducedinner, (*innerTable)->height, outertemp, (*outerTable)->height,  *outersorter, context);
+			mem_t<int2> joinResult = inner_join<launch_params_t<128, 2>>( innertemp, (*innerTable)->height, outertemp, (*outerTable)->height,  *sorter, context);
 			result_ = new Binding(variables_.size(), joinResult.size());
+			
 			
 			int* d_copyindex;
 			cudaMalloc(&d_copyindex, sizeof(int) * copyindex.size());
@@ -270,18 +160,18 @@ class JoinOperation : public Operation
 
 			int gridsize = 50;
 			int blocksize = (joinResult.size() / gridsize) + 1;			
-			indexCopy<<<gridsize, blocksize>>>(result_->pointer, innertemp, outertemp, d_copyindex, (*innerTable)->width, copyindex.size(), joinResult.data(), joinResult.size());
+			indexCopy<<<gridsize, blocksize>>>(result_->pointer, (*innerTable)->pointer, innertemp, (*outerTable)->pointer, outertemp, d_copyindex, (*innerTable)->width, (*outerTable)->width, copyindex.size(), joinResult.data(), joinResult.size());
 
 
-			delete(innersorter);
-			delete(outersorter);
+			std::cout << "SIZE IS " << joinResult.size() << std::endl;		
+
+
+
+
+			delete(sorter);
 			cudaFree(innertemp);
 			cudaFree(outertemp);
 			cudaFree(d_copyindex);
-			if (isreduced) {
-				cudaFree(reducedinner);			
-			}
-			
 			//TODO VEDERE SE CANCELLARE ANCHE INNER ED OUTER TABLE ( SE NON POSSONO SERVIRE PIU TARDI).
 		}
 };

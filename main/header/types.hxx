@@ -1,9 +1,11 @@
 #pragma once
 
+#include <moderngpu/context.hxx>
 
 //TODO VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
 int VALUE = 0;
 //**END TESTING***//
+
 
 
 //struct to contains a single triple with int type.

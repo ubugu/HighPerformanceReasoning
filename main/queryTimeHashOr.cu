@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
 
     size_t BUFFER_SIZE = 400000;
   
-    int N_CYCLE = 1;
+    int N_CYCLE = 50;
 
 	for (int i = 0; i < N_CYCLE; i++) {
 
@@ -103,8 +103,9 @@ int main(int argc, char** argv) {
 	std::vector<float> statistics = stats<float, float>(timeCuVector);	
     cout << "mean cuda time " << statistics[0] << endl;
     cout << "variance cuda time " << statistics[1] << endl;
-	cout << "FINAL VALUE IS " << VALUE << std::endl;
-				
+    cout << "FINAL VALUE IS " << VALUE << std::endl;
+    
+			
     return 0;
 }
 

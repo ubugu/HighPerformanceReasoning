@@ -81,9 +81,10 @@ class Query {
 					}
 				}
 				//std::cout << std::endl;
-			}			
-			VALUE += op->getResult()->height;
+			}	
 
+			VALUE += op->getResult()->height;
+			
 			for (auto op : select) {
 				delete(op->getResult());
 			}
