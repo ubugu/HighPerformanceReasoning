@@ -4,6 +4,8 @@
 
 //TODO VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
 int VALUE = 0;
+std::vector<float> timeQueryVector;  
+std::vector<float> timeKernelVector;  
 //**END TESTING***//
 
 

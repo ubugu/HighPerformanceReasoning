@@ -7,6 +7,7 @@
 #include <sys/time.h>
 
 #include "header/manager.hxx"
+#include "header/types.hxx"
 
 
 using google::dense_hash_map;
@@ -100,12 +101,22 @@ int main(int argc, char** argv) {
 		cout << "Time: " << exTime << endl;
 	}
 
-	std::vector<float> statistics = stats<float, float>(timeCuVector);	
-    cout << "mean cuda time " << statistics[0] << endl;
-    cout << "variance cuda time " << statistics[1] << endl;
+    std::vector<float> Custat = stats<float, float>(timeCuVector);	
+    std::vector<float> Kstat = stats<float, float>(timeKernelVector);	
+    std::vector<float> Qstat = stats<float, float>(timeQueryVector);	
+
+
+    cout << "mean kernel time " << Kstat[0] << endl;
+    cout << "variance kernel time " << Kstat[1] << endl;
+
+    cout << "mean query time " << Qstat[0] << endl;
+    cout << "variance query time " << Qstat[1] << endl;
+
+    cout << "mean total time " << Custat[0] << endl;
+    cout << "variance total time " << Custat[1] << endl;
+
     cout << "FINAL VALUE IS " << VALUE << std::endl;
-    
-			
+ 			
     return 0;
 }
 

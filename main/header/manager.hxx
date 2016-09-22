@@ -88,10 +88,19 @@ class QueryManager {
 			for (auto &query : count_queries_)  {
 				query.incrementCount();
 				if (query.isReady()) {
+					struct timeval beginQ, endQ, beginK,endK;
+					gettimeofday(&beginQ, NULL);
 					advancestorepointer_();
-					query.setWindowEnd(storepointer_.end);			
+					query.setWindowEnd(storepointer_.end);
+					gettimeofday(&beginK, NULL);	
 					query.launch();
+					gettimeofday(&endK, NULL);
+					float KTime = (endK.tv_sec - beginK.tv_sec ) * 1000 + ((float) endK.tv_usec - (float) beginK.tv_usec) / 1000 ;
 					query.printResults(resourcemap_);
+					gettimeofday(&endQ, NULL);
+					float QTime = (endQ.tv_sec - beginQ.tv_sec ) * 1000 + ((float) endQ.tv_usec - (float) beginQ.tv_usec) / 1000 ;
+					timeQueryVector.push_back(QTime);
+					timeKernelVector.push_back(KTime);  
 				}
 			}
 			
