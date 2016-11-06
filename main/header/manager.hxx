@@ -1,47 +1,34 @@
 #pragma once
 
 #include <cstdlib>
-#include <unordered_set>
+#include <unordered_map>
+#include <chrono>
 
 #include <sparsehash/dense_hash_map>
-
+    
 #include "types.hxx"
+#include "parser.hxx"	
 #include "query.hxx"
 
 
 using google::dense_hash_map;
 
-int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {	
-	const size_t zeroIndex = 0;
-	size_t splitIndex = inputString.find(separator);
-	
-	while (splitIndex != -1)
-		{
-			wordVector.push_back(inputString.substr(zeroIndex, splitIndex));	
-			inputString = inputString.substr(splitIndex + 1 , inputString.length() - 1);
-			splitIndex = inputString.find(separator);
-		}
-	
-	wordVector.push_back(inputString);
-	return 0;
-}
-
-
-
-
 
 class QueryManager {
 	private:
+		//THE SOURCE IS A 2D array with width 4 (subject, predicate, object, timestamp)
 		std::string* source;
 		int srcSize;
 		
-		std::vector<TimeQuery> time_queries_;
+		std::vector<TimeQuery*> time_queries_;
 		std::vector<CountQuery> count_queries_;
-		std::vector<TripleContainer> storebuffer_;
+		std::vector<size_t> storebuffer_;
 		
 		CircularBuffer<unsigned long int> timestamp_pointer_;
-		CircularBuffer<TripleContainer> storepointer_;	
-    		dense_hash_map<size_t, std::string> resourcemap_;
+		CircularBuffer<size_t> storepointer_;	
+    		std::unordered_map<size_t, Lit> hashMap_;
+    		std::unordered_map<std::string, size_t> inverseHashMap_;
+    		
 		
 	public:
 		QueryManager(std::string* source, int srcSize, int buffSize)   {
@@ -51,26 +38,26 @@ class QueryManager {
 			timestamp_pointer_.pointer = (unsigned long int*) malloc(buffSize * sizeof(unsigned long int));
 			timestamp_pointer_.size = buffSize;
 			
-			cudaMalloc(&storepointer_.pointer, buffSize * sizeof(TripleContainer));
-			storepointer_.size = buffSize;
+			cudaMalloc(&storepointer_.pointer, buffSize * 3 * sizeof(size_t));
 			
-			resourcemap_.set_empty_key(NULL);      
+			storepointer_.size = buffSize;	      
 		}
 
-
+		//Copy elements from host to device
 		void copyElements (int deviceSpan, int hostSpan, int copySize) {
-			cudaMemcpy(deviceSpan + storepointer_.pointer, &storebuffer_[0] + hostSpan, copySize * sizeof(TripleContainer), cudaMemcpyHostToDevice); 
+			cudaMemcpy(deviceSpan * 3 + storepointer_.pointer, &storebuffer_[0] + hostSpan * 3, copySize * 3 * sizeof(size_t), cudaMemcpyHostToDevice); 
 		}
 
-		void advancestorepointer_() {
-			int copySize = storebuffer_.size();
+		//Advance circular buffer pointer
+		void advancestorepointer() {
+			int copySize = storebuffer_.size() / 3;
 			
-			CircularBuffer<TripleContainer> rdfBuff = storepointer_;
+			CircularBuffer<size_t> rdfBuff = storepointer_;
 
-			int newEnd = (rdfBuff.end + copySize) % rdfBuff.size;
-	 
+			int newEnd = (rdfBuff.end + copySize) % (rdfBuff.size);
+	 		
 			if (newEnd < rdfBuff.end) {
-				int finalHalf = rdfBuff.size - rdfBuff.end;
+				int finalHalf = (rdfBuff.size) - rdfBuff.end;
 				copyElements(storepointer_.end, 0, finalHalf);			
 	
 				int firstHalf = copySize - finalHalf;
@@ -88,213 +75,149 @@ class QueryManager {
 			for (auto &query : count_queries_)  {
 				query.incrementCount();
 				if (query.isReady()) {
-					advancestorepointer_();
+					advancestorepointer();
 					query.setWindowEnd(storepointer_.end);
 					query.launch();
-					query.printResults(resourcemap_);
-
+					query.printResults(hashMap_);
 				}
 			}
 			
-			for (auto &query : time_queries_) {
-				if (query.isReady(timestamp_pointer_.pointer[timestamp_pointer_.end - 1])) {
-					struct timeval beginQ, endQ;
+			for (auto query : time_queries_) {
+				if (query->isReady(timestamp_pointer_.pointer[timestamp_pointer_.end - 1])) {
+				
+					struct timeval beginQ, endQ, endCpy;
 					gettimeofday(&beginQ, NULL);
 					
-					advancestorepointer_();
-					query.setWindowEnd(storepointer_.end - 1);							
-					query.launch();
-					query.printResults(resourcemap_);
-					query.setWindowEnd(1);
+					advancestorepointer();
+					gettimeofday(&endCpy, NULL);
+
+					query->setWindowEnd(storepointer_.end - 1);							
+					query->launch();
+					query->printResults(hashMap_);
+					query->setWindowEnd(1);
 					
 					gettimeofday(&endQ, NULL);
 					float QTime = (endQ.tv_sec - beginQ.tv_sec ) * 1000 + ((float) endQ.tv_usec - (float) beginQ.tv_usec) / 1000 ;
+					float storetime =  (endCpy.tv_sec - beginQ.tv_sec ) * 1000 + ((float) endCpy.tv_usec - (float) beginQ.tv_usec) / 1000 ;
+					
+					timeStoreVector.push_back(storetime);
 					timeQueryVector.push_back(QTime);  
 				}				
 			}
 		}
 		
+		//Start streaming
 		void start() {
 			struct timeval startingTs;
 			gettimeofday(&startingTs, NULL);
 			unsigned long int ts = startingTs.tv_sec * 1000 + startingTs.tv_usec / (1000);
 
-			for (auto &query : time_queries_) {
-				query.setStartingTimestamp(ts);
+			for (auto query : time_queries_) {
+				query->setStartingTimestamp(ts);
 			}
 			
 			usleep(1);
+		
+
+			auto start = std::chrono::high_resolution_clock::now();		
 			for (int i =0; i <srcSize; i++) {
 				
-				TripleContainer currentTriple;
- 
-				std::vector<std::string> triple;
-				separateWords(source[i], triple, ' ');
-			
-				currentTriple.subject = h_func(triple[0]);
-				currentTriple.predicate = h_func(triple[1]);
-				currentTriple.object = h_func(triple[2]);
-
-				resourcemap_[currentTriple.subject] = triple[0];
-				resourcemap_[currentTriple.predicate] = triple[1];
-  		       		resourcemap_[currentTriple.object] = triple[2] ;
+				size_t currentTriple;
 
 
+				for (int k = 0; k < 3; k++) {
+									
+					//Check if it has been already hashed
+					currentTriple = inverseHashMap_[source[i * 4 + k]];
+					
+					if (currentTriple == 0) {
+						//Calculate hash value
+						currentTriple = hashFunction(source[i * 4 + k]);
+					
+						//value 0 is reserved for unbound value
+						currentTriple = (currentTriple == 0 ? currentTriple + 1 : currentTriple);
+					
+						//Check for collisions
+						while (hashMap_[currentTriple].stringValue != "") {
+							currentTriple++;
+						}
+						
+						hashMap_[currentTriple] = Lit::createLiteral(source[i * 4 + k]);
+						inverseHashMap_[source[i * 4 + k]] = currentTriple;					
+					}
+					
+					storebuffer_.push_back(currentTriple);
+				}
 
+				
+	
 				struct timeval tp;
 				gettimeofday(&tp, NULL);
 				unsigned long int ms = 0;
-				if (triple.size() == 5) {
-					ms = std::stol(triple[4]);
-					if (i == 0) {
-						for (auto &query : time_queries_) {
-							query.setStartingTimestamp(ms - 1);
-						}
+				
+				ms = std::stol(source[i * 4 + 3]);
+				if (i == 0) {
+					for (auto query : time_queries_) {
+						query->setStartingTimestamp(ms - 1);
 					}
-				} else {
-					ms = tp.tv_sec * 1000 + tp.tv_usec / (1000);
 				}
-
+			
 				timestamp_pointer_.pointer[timestamp_pointer_.end] = ms;
 				timestamp_pointer_.end = (timestamp_pointer_.end + 1) % timestamp_pointer_.size;
 				timestamp_pointer_.begin = timestamp_pointer_.end;
 				
-				storebuffer_.push_back(currentTriple);
 				checkStep();
-				
+
 			}
-			
+									
+			auto finish = std::chrono::high_resolution_clock::now();
+			double testtime = std::chrono::duration_cast<std::chrono::nanoseconds>(finish-start).count();
+			testVector.push_back((double) testtime / 1000000);
+
+
 			//TODO vedere se occorre tenere o no quest'ultima parte
 			if (storebuffer_.size() != 0)  {
-				advancestorepointer_();	 
-				for (auto &query : time_queries_)  {
-					query.setWindowEnd(storepointer_.end);
-					query.launch();
-					query.printResults(resourcemap_);
+				advancestorepointer();	 
+				for (auto query : time_queries_)  {
+					query->setWindowEnd(storepointer_.end);
+					query->launch();
+					query->printResults(hashMap_);
 				}
 		
 				for (auto &query :count_queries_) {
 					query.setWindowEnd(storepointer_.end);
 					query.launch();
-					query.printResults(resourcemap_);
+					query.printResults(hashMap_);
 				}
 			}
 		}
 		
-		
-		char* nextChar(char* pointer, char* end) {
-			 while (pointer != end) {
-				if (*pointer == ' ') {
-					pointer++;
-					continue;
-				} else { 
-					return pointer;
-				}
-			}
-			
-			return pointer;
-		}		
-		
-		std::string nextWord(char** pointer, char* end, const char element) {
-			std::string word = "";
-			
-			*pointer = nextChar(*pointer, end);
-			if (*pointer == end) {
-				throw  std::string("Parsing error, unexpected token or end of string");
-			}
-			
-			while(*pointer != end) {
-				if (**pointer == element) {
-					(*pointer)++;
-					return word;
-				}
-				
-				word += **pointer;
-				(*pointer)++;
-			}
-			return word;
-				
-		}
-		
-		
-		
-		std::string err(std::string expected, std::string found) {
-			return	"Parsing error, expected " + expected + " found: '" + found + "'";
-		}
-		
-		bool testWord(std::string expected, std::string found) {
-			if (found != expected) {
-				throw err(expected, found);
-			}
-			return true;
-		}
-		
-		unsigned long int timeParse(std:: string word) {
-			char last = word[word.length() -1];
-			//U_SEC TIME
-			unsigned long int time = 0;
-			
-			if (last == 's') {
-				if (word[word.length() - 2] == 'm') {
-					time = stoul(word.substr(0, word.length() -2));
-				}
-				
-				else {
-					time = 1000 * stoul(word.substr(0, word.length() -1));
-				}	
-			}
-			
-			else if (last == 'm') {
-				time = 60 * (unsigned long int) 1000 * stoul(word.substr(0, word.length() -1));				
-			}
-			
-			else if (last == 'h') {
-				time = 60 * 60 * (unsigned long int) 1000 * stoul(word.substr(0, word.length() -1));					
-			}
-			
-			else if (last == 'd') {
-				time = 24 * 60 * 60 * (unsigned long int) 1000 * stoul(word.substr(0, word.length() -1));		
-			}
-			
-			else {
-				throw err("TIME UNIT", word);
-			}
-			
-			return time;
-					
-		}
-		
+
+
+
+		//Function for parsing the query
 		void parseQuery(std::string query) {
-		
-			//CHECK CHARACTER WORD 
 			
 			char* pointer = &query[0];
 			char* end = &query[query.length() - 1];
 			
-			std::vector<std::string> variables;
-			dense_hash_map<std::string, std::string> prefixes;
-			prefixes.set_empty_key("");    			
-			
-			std::vector<SelectOperation*> selectOperations;
-			std::vector<JoinOperation*> joinOperations;			
-			dense_hash_map<std::string, Operation**> stackOperations;
-			stackOperations.set_empty_key("");
-			
-			bool logical = false;
+			//Prepare elements for query
+			std::vector<Operation*> operationsVector;
+			CircularBuffer<size_t>* queryRdfPointer = new CircularBuffer<size_t>();
+			*queryRdfPointer = storepointer_;
+			OutputDirective* outputDirective;
 			unsigned long int window = 0;
-			unsigned long int step = 0;
+			unsigned long int step = 0;			
+			bool logical = false;	
+					
+			//Prefixes hash map
+			dense_hash_map<std::string, std::string> prefixes;
+			prefixes.set_empty_key("");    	
 			
-			
-			bool addAll = false;
-									
-									
+			//Start partsing										
 			std::string word = nextWord(&pointer, end, ' ');
 
-			/**JOIN VALUES**/
-			std::vector<std::string> variable_stack;
-			Operation* currentOp;
-			/**************/
-			
+
 			if (word == "BASE") {
 			 	//TODO IMPLEMENTATION OF BASE
 			}
@@ -306,7 +229,6 @@ class QueryManager {
 				//TODO CHECK DUPLICATE PREFIX
 				word = nextWord(&pointer, end, ' ');				
 			}
-			
 			
 			
 			testWord("FROM", word);
@@ -333,12 +255,11 @@ class QueryManager {
 			}
 			
 			else {
-				//TODO VERIFICARE SE RICEVO UN INT SEGUITO DA UNIT° DI MISURA / SPAZIO VALIDO O NO
 				logical = true;
 				window = timeParse(word);
 				
 				word = nextWord(&pointer, end, ' ');							
-				
+				//NEED TO CHECK INTEGER
 				if (word == "STEP") {
 					word = nextWord(&pointer, end, ' ');							
 					step = timeParse(word);
@@ -355,150 +276,89 @@ class QueryManager {
 				
 			}
 			
-			
-			
 			word = nextWord(&pointer, end, ' ');	
 			
-			
+			//Code for SELECT directivehttp://www.spaziogames.it/
 			if (word == "SELECT")  {
-
+			
 				word = nextWord(&pointer, end, ' ');
-								
-				do {					
-					if (word == "*") {
-						addAll = true;
-						word = nextWord(&pointer, end, ' ');
-						if (word != "WHERE") {
-							throw err("WHERE", word); 
-						} 
-						break;
-					}
 					
-					if (word[0] != '?') {
-						throw std::string("Error in variable entered");
-					}
-					
-					variables.push_back(word.substr(1));
-					word = nextWord(&pointer, end, ' ');	
-					
-				} while (word != "WHERE");
-				
-				word = nextWord(&pointer, end, ' ');
-				
-				if (word != "{") {
-					throw err("{", word);
-				}
-				
-				
-				do  {
-					std::vector<std::size_t> constants;
-					std::vector<std::string> selectVariable;
-					const SelectArr stdArr[3] = {SelectArr::S, SelectArr::P, SelectArr::O};
-					int arr = 0;
-					
-					std::vector<std::string> addedvar;
-					std::vector<int> innervar;
-					std::vector<int> outervar;
-					std::vector<int> joinindex;
-					
-					for (int i = 0; i <3; i ++ ) {
-						word = nextWord(&pointer, end, ' ');
-						
-						std::cout << "FOUND " << word << std::endl;
-						
-						if (word[0] == '?') {
-							word = word.substr(1);
-							if (addAll) {
-								if (std::find(variables.begin(), variables.end(), word) == variables.end()) {
-									variables.push_back(word);
-								} 								
-							}
-							selectVariable.push_back(word);
-							
-							bool found = false;
-							
-							for (int k = 0;  k < variable_stack.size(); k++) {
-								std::cout << "word " << word << " CHECK " << k << " value " << variable_stack[k] << std::endl; 
-								if (variable_stack[k] == word) {
-									innervar.push_back(k);
-									outervar.push_back(selectVariable.size() - 1);
-									found = true;
-									break;
-								}
-							}
-							
-							if (!found) {
-								joinindex.push_back(selectVariable.size() - 1);
-								addedvar.push_back(word);
-							}
-														
-						} else {
-							constants.push_back(h_func(word));
-							arr += static_cast<int> (stdArr[i]);   
-						}
-						
-					}
-					
-					
-					SelectOperation* currentselect = new SelectOperation(constants, selectVariable, arr);
-					selectOperations.push_back(currentselect);
-					
-					//CREATE JOIN OPERATION
-					if (variable_stack.size() == 0) {
-						currentOp = currentselect;
-						variable_stack.insert(variable_stack.end(), selectVariable.begin(), selectVariable.end());
-					} else {
-						
-						if (addedvar.size() == selectVariable.size()) {
-							//TODO VEDERE COSA FARE SE L'ORDINE é SBAGLIATO		
-							std::cout << "NOT IMPLEMENTED YET" << std::endl;
-							exit(1);	
-						} else {
-							variable_stack.insert(variable_stack.end(), addedvar.begin(), addedvar.end());
-							JoinOperation* joinop = new JoinOperation(currentOp->getResultAddress(), currentselect->getResultAddress(), innervar, outervar, joinindex, variable_stack);
-							
-							joinOperations.push_back(joinop);
-							currentOp = joinop;
-						}
-					}
-					
-					
+				//Check if there is a projection
+				if (word == "*") {
+					outputDirective = new SelectDirective();
 					
 					word = nextWord(&pointer, end, ' ');
-						
-					if (word != "." && word != "}") {
-						throw err(". or }", word);
+					testWord("WHERE", word);
+					word = nextWord(&pointer, end, ' ');
+					testWord("{", word);
+										 
+					//Parse operations
+					operationsVector =  blockElement(&pointer, end, queryRdfPointer, &hashMap_, &inverseHashMap_); 
+					
+				} else {
+					std::vector<std::string> variables;
+					
+					//Add projection variables			
+					while(word[0] == '?') {					
+						variables.push_back(word);
+						word = nextWord(&pointer, end, ' ');					
 					}
-					
-				} while (word != "}");
-					
-					
-			} else {
-			
-				throw err("SELECT", word);
-			}
 				
-								
+					if (variables.size() == 0) {
+						std::cout << "Error, no variable inserted" << std::endl;
+						exit(-1);
+					}	
+					
+					testWord("WHERE", word);
+					word = nextWord(&pointer, end, ' ');
+					testWord("{", word);
+					
+					//Parse operations
+					operationsVector =  blockElement(&pointer, end, queryRdfPointer, &hashMap_, &inverseHashMap_); 
+				
+					//Calculate index of prijection variables
+					std::vector<int> variablesIndex; 
+					std::vector<std::string> opVariables = operationsVector.back()->getVariables();
+					for(int i = 0; i < variables.size(); i++) {
+						for (int k =0; k < opVariables.size(); k++) {
+							if (variables[i] == opVariables[k]) {
+								variablesIndex.push_back(k);
+							}
+						}
+					}
+				
+					outputDirective = new SelectDirective(variablesIndex);
+				}
+				
+			//Code for ASK directive	
+			} else if (word == "ASK") {
+				//TODO
+				
+			//Code for CONSTRUCT directive
+			} else if (word == "CONSTRUCT") {
+				//TODO
+				
+			//Throw error for other cases	
+			} else {
+				throw err("SELECT or ASK or CONSTRUCT", word);
+			}
+			
+			//Check if other token are inserted	
 			pointer = nextChar(pointer, end);
-			
 			if (pointer != end)  {
-				throw std::string("Unexpected token");
+				throw std::string("Unexpected token. Expected EOL and found");
 			}
 			
-			
+			//Create the query
 			if (logical == true) {
-				std::cout << "WINDOW SIZE IS " << window << " STEP SIZE IS " << step << std::endl;
-				TimeQuery query(selectOperations, joinOperations, storepointer_, timestamp_pointer_, variables, window, step);
+				TimeQuery* query = new TimeQuery(operationsVector, queryRdfPointer, timestamp_pointer_, outputDirective, window, step);
 				time_queries_.push_back(query);
+				
+			} else {
+			//	CountQuery query(selectOperations, joinOperations, storepointer_, variables, window);
+			//	count_queries_.push_back(query);	
 			}
-			
-			else {
-				CountQuery query(selectOperations, joinOperations, storepointer_, variables, window);
-				count_queries_.push_back(query);	
-			}
-			
-			
-			std::cout << "SELECT SIZE IS " << selectOperations.size() << " JOIN SIZE IS " << joinOperations.size() << std::endl;
+
 				
 		}
 };

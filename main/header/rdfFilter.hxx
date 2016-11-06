@@ -154,36 +154,11 @@ struct BinOp<Lit, Lit, operation_t> : public BasicOp {
 	
 				return op(value1, value2);
 			}
-
-			
+					
 			case(1): {
-				int value1 = 0;
-				int value2 = 0;
-		
-				value1 = *((int*)(left.value));
-				value2 = *((int*)(right.value));
-				
-				return op(value1, value2);
-			}
+				double value1 = left.numericValue;
+				double value2 = right.numericValue;
 			
-			case(2): {
-				float value1 = 0;
-				float value2 = 0;
-		
-				value1 = *((float*)(left.value));
-				value2 = *((float*)(right.value));
-		
-				return op(value1, value2);		
-			}
-		
-		
-			case(3): {
-				double value1 = 0;
-				double value2 = 0;
-		
-				value1 = *((double*)(left.value));
-				value2 = *((double*)(right.value));
-		
 				return op(value1, value2);	
 			}
 		}
@@ -201,13 +176,13 @@ class FilterOperation : public Operation
 	private:
 		RelationTable* input_;
 		BasicOp* filter_;
-		std::unordered_map<size_t, Lit>* filter_;
+		std::unordered_map<size_t, Lit>* hashMap_;
 		
 	public:
 		FilterOperation(RelationTable* inputTable, BasicOp* filter, std::vector<std::string> variables, std::unordered_map<size_t, Lit>* hashMap) : Operation(variables) {
 			this->input_ = inputTable;
 			this->filter_ = filter;
-			this->filter_ = hashMap;
+			this->hashMap_ = hashMap;
 		}
 
 		void execute() {
@@ -222,13 +197,12 @@ class FilterOperation : public Operation
 			for (int i = 0; i <= input_->height; i++) {
 				size_t* currentRow = hostInput + i * input_->width;
 				
-				if (filter_->execute(filter_, currentRow)) {
+				if (filter_->execute(hashMap_, currentRow)) {
 					std::copy(currentRow, currentRow + input_->width, hostResult + resultSize * input_->width);
 					resultSize++;
 				}
 			}
 			
-
 			//allocate result on device and copy it from host to device
 			result_.allocateOnDevice(resultSize);
 			cudaMemcpy(result_.pointer, hostResult, sizeof(size_t) * result_.width * resultSize, cudaMemcpyHostToDevice);

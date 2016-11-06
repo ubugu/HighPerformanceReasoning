@@ -37,22 +37,22 @@ __global__ void secondCopy(size_t* dest, size_t* src, int* unionIndex, int srcwi
 class UnionOperation : public Operation
 {
 	private:
-		std::vector<int> unionIndex;  	//Index indicating the position in which copy the element of the right table
+		std::vector<int> unionIndex_;  	//Index indicating the position in which copy the element of the right table
 		RelationTable* first_;		//Left  table
 		RelationTable* second_;		//Right table
-		bool sameHeader = true;		//Bool value to indicate which union make
+		bool sameHeader_ = true;		//Bool value to indicate which union make
 		
 	public:
 		
 		UnionOperation(RelationTable* first, RelationTable* second, std::vector<int> unionIndex, std::vector<std::string> variables) : Operation(variables) {
 			this->first_ = first;
 			this->second_ = second;
-			this->unionIndex = unionIndex;
+			this->unionIndex_ = unionIndex;
 			
 			//Check if the two tables have the same header
-			for (int i = 0; i <unionIndex.size(); i++) {
-				sameHeader &= (unionIndex[i] == i);
-				if (!sameHeader)
+			for (int i = 0; i <unionIndex_.size(); i++) {
+				sameHeader_ &= (unionIndex_[i] == i);
+				if (!sameHeader_)
 					break;	
 			}
 		}
@@ -66,7 +66,7 @@ class UnionOperation : public Operation
 			**If the two table have the same header the cudaMemcpy function is used
 			** otherwise two specialised function are used-
 			*/
-			if (sameHeader) {
+			if (sameHeader_) {
 				cudaMemcpy(result_.pointer, first_->pointer, sizeof(size_t) * first_->height * first_->width, cudaMemcpyDeviceToDevice);				
 				cudaMemcpy(result_.pointer + (first_->height * first_->width), second_->pointer, sizeof(size_t) * second_->height * second_->width, cudaMemcpyDeviceToDevice);
 			} else {
@@ -74,8 +74,8 @@ class UnionOperation : public Operation
 				
 				//Load union index on device
 				int* d_index;
-				cudaMalloc(&d_index, unionIndex.size() * sizeof(int));		
-				cudaMemcpy(d_index, &unionIndex[0], unionIndex.size() * sizeof(int), cudaMemcpyHostToDevice);
+				cudaMalloc(&d_index, unionIndex_.size() * sizeof(int));		
+				cudaMemcpy(d_index, &unionIndex_[0], unionIndex_.size() * sizeof(int), cudaMemcpyHostToDevice);
 
 				//Launch first copy
 				int blockSize = 256;

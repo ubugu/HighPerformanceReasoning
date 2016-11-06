@@ -7,23 +7,23 @@
 class Operation {
 
 	protected:
-		Binding* result_;	
-		std::vector<std::string> variables_;
+		RelationTable result_;	
 
 	public:
-		Binding* getResult() {
-			return result_;
+		Operation (std::vector<std::string> variables) {
+			result_.header = variables; 
 		}
-	
-		void setResult(Binding* result) {
-			result_ = result;
+		RelationTable getResult() {
+			return result_;
 		}
 			
 		std::vector<std::string> getVariables() {
-			return variables_;
+			return result_.header;
 		}
 	
-		Binding** getResultAddress() {
+		RelationTable* getResultAddress() {
 			return &result_;
 		}
+		
+		virtual void execute() = 0;
 };

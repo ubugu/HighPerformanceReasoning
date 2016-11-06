@@ -2,130 +2,78 @@
 
 #include <cstdlib>
 #include <fstream>
-#include <unordered_set>
+#include <unordered_map>
 
 #include <sparsehash/dense_hash_map>
 
 #include "types.hxx"
-#include "rdfSelect.hxx"
-#include "rdfJoin.hxx"
-
+#include "operations.hxx"
+#include "outputDirective.hxx"
 
 class Query {
 	protected:
-		std::vector<SelectOperation*> select;
-		std::vector<JoinOperation*> join;
-		CircularBuffer<TripleContainer> windowPointer;
-		std::vector<std::string> variables_projection;
-
+		std::vector<Operation*> operations_;
+		CircularBuffer<size_t>* windowPointer_;
+		OutputDirective* outputDirective_;
 	public:
-		Query(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join, CircularBuffer<TripleContainer> rdfPointer, std::vector<std::string> variables) {
-			this->join = join;
-			this->select = select;
-			this->windowPointer = rdfPointer;
-			this->variables_projection = variables;
+		Query(std::vector<Operation*> operations, CircularBuffer<size_t>* rdfPointer,  OutputDirective* directive) {
+			this->windowPointer_ = rdfPointer;
+			this->operations_ = operations;
+			outputDirective_ =  directive;
 		}
 
 		virtual void setWindowEnd(int step) {
-			windowPointer.end = step;
+			windowPointer_->end = step;
 		}
-		
-		/**
-		* Function for managing query execution
-		**/
+				
+		//Function for managing query execution
 		void startQuery() {
-			int storeSize =  windowPointer.getLength();			
-
-			for (auto op : select) {
-				op->rdfSelect(windowPointer, storeSize);
+			for (auto op : operations_) {
+				op->execute();
 			}
-			
-			for (auto op : join) {
-				op->launcher();
-			}
-
-
 		}
 		
 
-		//TODO modificare quando si sapra come utilizzare i risultati
-		void printResults(google::dense_hash_map<size_t, std::string> mapH) {
+		void printResults(std::unordered_map<size_t, Lit> mapH) {
+			RelationTable d_result = operations_.back()->getResult();
+			outputDirective_->generateOutput(mapH, d_result);
 			
-			
-			Operation* op;
-			if (join.size() == 0) {
-				std::cout << "LAST SELECT" << std::endl;
-				op = select.back();
+			//Free result memory
+			if (d_result.onDevice) {
+				cudaFree(d_result.pointer);
 			} else {
-				std::cout << "LAST JOIN" << std::endl;
-				op = join.back();
+				free(d_result.pointer);
 			}
-			
-			std::cout << "FOUND " << op->getResult()->height << " ELEMENTS" << std::endl;
-			
-			Binding* d_result = op->getResult();
-			std::vector<std::string> variables = op->getVariables();
-				 	
-			size_t* final_binding = (size_t*) malloc(d_result->height * d_result->width * sizeof(size_t));
-			cudaMemcpy(final_binding, d_result->pointer, d_result->width * sizeof(size_t) * d_result->height, cudaMemcpyDeviceToHost);
-	
-			std::vector<std::string> output;
-	
-			for (int i =0; i < d_result->height; i++) {
-				int currentVariable = 0;
-				for (int k = 0; k < d_result->width; k++) {
-					if (variables_projection[currentVariable] == variables[k]) {
-						output.push_back(mapH[ final_binding[i * d_result->width + k]]);
-						//std::cout << variables_projection[currentVariable] << "=" <<  mapH[ final_binding[i * d_result->width + k]] << " ";
-						currentVariable++;
-					}
-				}
-				//std::cout << std::endl;
-			}	
-
-			VALUE += op->getResult()->height;
-			
-			for (auto op : select) {
-				delete(op->getResult());
-			}
-			
-			for (auto op : join) {
-				delete(op->getResult());
-			}
-
-			//TODO aggiungere clear della memoria dei risultati 		
+					
 		}
-		
-	
+			
 };
 
 
 class CountQuery : public Query {
 	private:
-		int count;
-		int currentCount;
+		int count_;
+		int currentCount_;
 
 	public:
-		CountQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
-			CircularBuffer<TripleContainer> rdfPointer,
-			std::vector<std::string> variables, int count) : Query(select, join, rdfPointer, variables) {
+		CountQuery(std::vector<Operation*> operations, CircularBuffer<size_t>* rdfPointer, OutputDirective* directive, int count) : Query(operations, rdfPointer, directive) {
 
-				this->count = count;
-				this->currentCount = 0;
+				this->count_ = count;
+				this->currentCount_ = 0;
 		}
 		
 		void incrementCount() {
-			this->currentCount++;
+			this->currentCount_++;
 		}
 		
 		bool isReady() {
-			return (currentCount == count);
+			return (currentCount_ == count_);
 		}
 		
 		void launch() {
 			startQuery();
-			windowPointer.advanceBegin(count);
-			currentCount = 0;
+			windowPointer_->advanceBegin(count_);
+			currentCount_ = 0;
 		}
 		
 		~CountQuery() {}
@@ -133,61 +81,65 @@ class CountQuery : public Query {
 
 class TimeQuery : public Query {
 	private:
-		CircularBuffer<unsigned long int> timestampPointer;
-		//TIME IS IN M_SEC
-		unsigned long int stepTime;
-		unsigned long int windowTime;
-		unsigned long int lastTimestamp;
+		CircularBuffer<unsigned long int> timestampPointer_;
+		
+		//TIME IS IN ms_SEC
+		unsigned long int stepTime_;
+		unsigned long int windowTime_;
+		unsigned long int lastTimestamp_;
 		
 	public:
-		TimeQuery(std::vector<SelectOperation*> select, std::vector<JoinOperation*> join,
-			CircularBuffer<TripleContainer> rdfPointer, CircularBuffer<unsigned long int> timestampPointer,
-			std::vector<std::string> variables, int windowTime, int stepTime) : Query(select, join, rdfPointer, variables) {
-				this->stepTime = stepTime;
-				this->windowTime = windowTime;
+		TimeQuery(std::vector<Operation*> operations, CircularBuffer<size_t>* rdfPointer, CircularBuffer<unsigned long int> timestampPointer,
+			 OutputDirective* directive, int windowTime, int stepTime) : Query(operations, rdfPointer, directive) {
+				this->stepTime_ = stepTime;
+				this->windowTime_ = windowTime;
 				
-				this->lastTimestamp = 0;
-				this->timestampPointer = timestampPointer;
+				this->lastTimestamp_ = 0;
+				this->timestampPointer_ = timestampPointer;
 		}
 		
 		void setWindowEnd(int step)  {
 			Query::setWindowEnd(step);
-			timestampPointer.end = step;
+			timestampPointer_.end = step;
 		}
 
 		bool isReady(unsigned long int newTimestamp) {
-			return (lastTimestamp + windowTime < newTimestamp);
+			return (lastTimestamp_ + windowTime_ < newTimestamp);
 		}
 
 		void setStartingTimestamp(unsigned long int timestamp) {
-			this->lastTimestamp = timestamp;
+			this->lastTimestamp_ = timestamp;
 		}
 
 		void launch() {	
 			//Update new starting value of buffer
 			int newBegin = 0;
-			for(int i = timestampPointer.begin; i  != timestampPointer.end; i = (i + 1) % timestampPointer.size) {	
-				if (timestampPointer.pointer[i] > lastTimestamp) {
+			bool isFirst = true;
+
+			for(int i = timestampPointer_.begin; (i  != timestampPointer_.end) || (isFirst); i = (i + 1) % timestampPointer_.size) {	
+				
+				if (timestampPointer_.pointer[i] > lastTimestamp_) {
 					newBegin = i;
 					break;
-				}				
+				}
+				isFirst = false;			
 			}
-							
-			windowPointer.begin = newBegin;
-			timestampPointer.begin = newBegin;
+			windowPointer_->begin = newBegin;
+			timestampPointer_.begin = newBegin;
 			
 			//Lancuh query and print results
 			struct timeval beginK, endK;
 			gettimeofday(&beginK, NULL);	
-			startQuery();
 			
+			startQuery();
+
 			cudaDeviceSynchronize();
 			gettimeofday(&endK, NULL);
 			float KTime = (endK.tv_sec - beginK.tv_sec ) * 1000 + ((float) endK.tv_usec - (float) beginK.tv_usec) / 1000 ;
 			timeKernelVector.push_back(KTime);
-			
+
 			//Update window timestamp value
-			lastTimestamp += stepTime;
+			lastTimestamp_ += stepTime_;
 		}
 
 		~TimeQuery() {}

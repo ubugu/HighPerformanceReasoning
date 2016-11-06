@@ -57,30 +57,30 @@ __global__ void copysweep(size_t* dest, size_t* src, int destwidth, int srcwidth
 class OptionalOperation : virtual public Operation
 {	
 	private:
-		RelationTable* innerTable;
-		RelationTable* outerTable;
+		RelationTable* innerTable_;
+		RelationTable* outerTable_;
 		
 		//Position in inner and outer table of the varaibles to join
-		std::vector<int> innervar;
-		std::vector<int> outervar;
+		std::vector<int> innerVar_;
+		std::vector<int> outerVar_;
 		
 		//Position in the outer table of the variables not contained in the current innertable, added after the join.
-		std::vector<int> copyindex;
+		std::vector<int> copyindex_;
 		
 
 	public:
 		OptionalOperation(RelationTable* innerTable, RelationTable* outerTable, std::vector<int> innervar, std::vector<int> outervar, std::vector<int> copyindex, std::vector<std::string> variables)  : Operation(variables) {
-			this->innerTable = innerTable;
-			this->outerTable = outerTable;
-			this->copyindex = copyindex;
-			this->innervar = innervar;
-			this->outervar = outervar;
+			this->innerTable_ = innerTable;
+			this->outerTable_ = outerTable;
+			this->copyindex_ = copyindex;
+			this->innerVar_ = innervar;
+			this->outerVar_ = outervar;
 		}
 		
 		//Function to execute the optional function due to the size of the join.
 		void execute() {
-			assert(innervar.size() == outervar.size());
-			switch(innervar.size()) {
+			assert(innerVar_.size() == outerVar_.size());
+			switch(innerVar_.size()) {
 				case(1): 
 					rdfOptional<1>();
 					break;
@@ -123,57 +123,57 @@ class OptionalOperation : virtual public Operation
 			//Allocate temporary tables
 			Row<joinsize>* innertemp;
 			Row<joinsize>* outertemp;
-			cudaMalloc(&innertemp, sizeof(Row<joinsize>) * innerTable->height);
-			cudaMalloc(&outertemp, sizeof(Row<joinsize>) * outerTable->height);
+			cudaMalloc(&innertemp, sizeof(Row<joinsize>) * innerTable_->height);
+			cudaMalloc(&outertemp, sizeof(Row<joinsize>) * outerTable_->height);
 			
 			//Allocate indexes on the device
  			int* innerindex;
 			int* outerindex;
 			cudaMalloc(&innerindex, sizeof(int) * joinsize);
 			cudaMalloc(&outerindex, sizeof(int) * joinsize);
-			cudaMemcpy(innerindex, &innervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
-			cudaMemcpy(outerindex, &outervar[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
+			cudaMemcpy(innerindex, &innerVar_[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
+			cudaMemcpy(outerindex, &outerVar_[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
 			
 			//Copy elements from the original tables to the reduced ones
 			int blockSize = 256;
-			int gridSize = innerTable->height / blockSize + 1;	
-			reduceCopy<<<gridSize,  blockSize>>>(innerTable->pointer, innertemp, innerTable->width, innerindex, joinsize, innerTable->height);
-			gridSize = outerTable->height / blockSize + 1;
-			reduceCopy<<<gridSize,  blockSize>>>(outerTable->pointer, outertemp, outerTable->width, outerindex, joinsize, outerTable->height);
+			int gridSize = innerTable_->height / blockSize + 1;	
+			reduceCopy<<<gridSize,  blockSize>>>(innerTable_->pointer, innertemp, innerTable_->width, innerindex, joinsize, innerTable_->height);
+			gridSize = outerTable_->height / blockSize + 1;
+			reduceCopy<<<gridSize,  blockSize>>>(outerTable_->pointer, outertemp, outerTable_->width, outerindex, joinsize, outerTable_->height);
 
 			//Sort and join elements
 			RowComparator<joinsize>* sorter = new RowComparator<joinsize>();
-			mergesort<launch_params_t<256, 1>>(innertemp, innerTable->height, *sorter, context);
-			mergesort<launch_params_t<256, 1>>(outertemp, outerTable->height , *sorter, context);
-			mem_t<int2> joinResult = inner_join<launch_params_t<128, 3>>( innertemp, innerTable->height, outertemp, outerTable->height,  *sorter, context);
+			mergesort<launch_params_t<256, 1>>(innertemp, innerTable_->height, *sorter, context);
+			mergesort<launch_params_t<256, 1>>(outertemp, outerTable_->height , *sorter, context);
+			mem_t<int2> joinResult = inner_join<launch_params_t<128, 3>>( innertemp, innerTable_->height, outertemp, outerTable_->height,  *sorter, context);
 			
 			//Allocate result table, setting all values to 0
-			result_.allocateOnDevice(joinResult.size() + innerTable->height);
-			cudaMemset(result_.pointer + joinResult.size() * result_.width, 0, innerTable->height * result_.width * sizeof(size_t));
+			result_.allocateOnDevice(joinResult.size() + innerTable_->height);
+			cudaMemset(result_.pointer + joinResult.size() * result_.width, 0, innerTable_->height * result_.width * sizeof(size_t));
 			
 			//Allocate arrays for the prefix sum
-			thrust::device_vector<int> bitArr(innerTable->height);
-			thrust::device_vector<int> prefixArr(innerTable->height);
+			thrust::device_vector<int> bitArr(innerTable_->height);
+			thrust::device_vector<int> prefixArr(innerTable_->height);
 			thrust::fill(bitArr.begin(), bitArr.end(), 1);
 
 			//Copies element from the outer table and set the isCopied boolean value
 			int* d_copyindex;
-			cudaMalloc(&d_copyindex, sizeof(int) * copyindex.size());
-			cudaMemcpy(d_copyindex, &copyindex[0], sizeof(int) * copyindex.size(), cudaMemcpyHostToDevice);
+			cudaMalloc(&d_copyindex, sizeof(int) * copyindex_.size());
+			cudaMemcpy(d_copyindex, &copyindex_[0], sizeof(int) * copyindex_.size(), cudaMemcpyHostToDevice);
 
 			//Copy elements from the input tables to the output one
 			gridSize = (joinResult.size() / gridSize) + 1;			
-			indexCopy<<<gridSize, blockSize>>>(result_.pointer, innerTable->pointer, innertemp, outerTable->pointer, outertemp, d_copyindex, innerTable->width, outerTable->width, copyindex.size(), joinResult.data(), joinResult.size(), bitArr.data().get());
+			indexCopy<<<gridSize, blockSize>>>(result_.pointer, innerTable_->pointer, innertemp, outerTable_->pointer, outertemp, d_copyindex, innerTable_->width, outerTable_->width, copyindex_.size(), joinResult.data(), joinResult.size(), bitArr.data().get());
 			
 			//Prefix sum operation on the isCopied boolean array
 			thrust::inclusive_scan(bitArr.begin(), bitArr.end(), prefixArr.begin());
 			
 			//Copy of the elements that dind't take part into the join operation
-			gridSize = (innerTable->height / gridSize) + 1;
-			copysweep<<<gridSize,blockSize>>>(result_.pointer + joinResult.size() * result_.width, innerTable->pointer, result_.width, innerTable->width,  bitArr.data().get(), prefixArr.data().get(), innerTable->height);
+			gridSize = (innerTable_->height / gridSize) + 1;
+			copysweep<<<gridSize,blockSize>>>(result_.pointer + joinResult.size() * result_.width, innerTable_->pointer, result_.width, innerTable_->width,  bitArr.data().get(), prefixArr.data().get(), innerTable_->height);
 				
 			//Update size of the result
-			cudaMemcpy(&(result_.height), prefixArr.data().get() + innerTable->height - 1, sizeof(int), cudaMemcpyDeviceToHost);
+			cudaMemcpy(&(result_.height), prefixArr.data().get() + innerTable_->height - 1, sizeof(int), cudaMemcpyDeviceToHost);
 			result_.height += joinResult.size();
 			
 			//Free unused memory
@@ -183,8 +183,8 @@ class OptionalOperation : virtual public Operation
 			cudaFree(innerindex);
 			cudaFree(outerindex);
 			cudaFree(d_copyindex);
-			cudaFree(innerTable->pointer);
-			cudaFree(outerTable->pointer);
+			cudaFree(innerTable_->pointer);
+			cudaFree(outerTable_->pointer);
 
 		}
 		
