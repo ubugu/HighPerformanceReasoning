@@ -5,21 +5,6 @@
 #include <vector>
 #include <algorithm>    // std::sort
 
-int separateWords(std::string inputString, std::vector<std::string> &wordVector,const char separator ) {
-        const size_t zeroIndex = 0;
-        size_t splitIndex = inputString.find(separator);
-
-        while (splitIndex != -1)
-                {
-                        wordVector.push_back(inputString.substr(zeroIndex, splitIndex));
-                        inputString = inputString.substr(splitIndex + 1 , inputString.length() - 1);
-                        splitIndex = inputString.find(separator);
-                }
-
-        wordVector.push_back(inputString);
-        return 0;
-}
-
 
 int main(int argc,char *argv[]) 
 {
@@ -38,15 +23,15 @@ int main(int argc,char *argv[])
 	int found = 0;
 	vector<string> triple;
 	while (getline(rdfStore,strInput)) {
-		
-        	//separateWords(strInput, triple, ' ');
-		
 		triple.push_back(strInput);
 	}
+	int oldSize = triple.size();
 	std::sort(triple.begin(), triple.end()); 
   	auto last = std::unique(triple.begin(), triple.end());
    	triple.erase(last, triple.end());  	
 	std::random_shuffle ( triple.begin(), triple.end() );
+	int diff = (oldSize - triple.size());
+	std::cout << "erased " << diff  << std::endl;
 	
 	for (string value : triple) {
 		output << value << endl;

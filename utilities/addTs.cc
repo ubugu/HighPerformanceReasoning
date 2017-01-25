@@ -36,7 +36,7 @@ int main(int argc,char *argv[])
 	string strInput;
 	long int ts = 1;
 	while (getline(rdfStore,strInput)) {		
-		outf << strInput << " " << ts * 1000000 << std::endl; 
+		outf << strInput << " " << ts * 1000 << std::endl; 
 		ts++;
 	}
 }

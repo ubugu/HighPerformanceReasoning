@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
 
 		srand (time(NULL));
 		for (int i =0; i < toFill; i ++)
-			triples.push_back(to_string(rand() % 500) + " " + to_string(rand() % 500) + " " +  to_string(rand() % 500) +  " .");
+			triples.push_back("<http://example.org/int/" + to_string(rand() % 500) + "> " + "<http://example.org/int/" + to_string(rand() % 500) + "> " +  "<http://example.org/int/" + to_string(rand() % 500) + "> .");
 
 
                 std::cout << "SIZE AFTER IS " << triples.size() << std::endl;
