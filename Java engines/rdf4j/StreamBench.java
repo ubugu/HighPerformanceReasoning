@@ -18,6 +18,10 @@ import org.eclipse.rdf4j.repository.sail.SailRepository;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.sail.memory.MemoryStore;
 import mydomain.CircularBuffer;	
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.Files;
+
 
 /**
  * Hello world!
@@ -42,7 +46,7 @@ public class StreamBench
       			return; 
       		}
       		
-                File file =  new File("../../rdfStore/strts500.txt");
+                File file =  new File(args[3]);
 		List<SimpleStatement> statements = new ArrayList<SimpleStatement>();
 		List<Long> timestamps = new ArrayList<Long>();
 		
@@ -72,14 +76,13 @@ public class StreamBench
 		br.close();
 	
 		List timeVec = new LinkedList();
-		
+		List queryVec = new LinkedList();
 
-		int N_CYCLES = 1;
+		int N_CYCLES = 2;
 		List<BindingSet> resultList = null;
 		int resultLen = 0;
 		for (int i =0; i < N_CYCLES;  i++) {
 
-			double start = System.nanoTime();
 			LinkedList<SimpleStatement> currentStm = new LinkedList<SimpleStatement>();
 			
 			int bufferSize = 400000;		
@@ -89,12 +92,13 @@ public class StreamBench
 			int windowTime = Integer.parseInt(args[1]);
 			int stepTime = Integer.parseInt(args[2]);
 			
+			
 			for (int k = 0; k < statements.size(); k++)
 			{
 				timestampBuffer.buffer[k % bufferSize] = timestamps.get(k);
 				timestampBuffer.end = k % timestampBuffer.size;
 								
-				if ( timestampBuffer.buffer[k % bufferSize] > currentTimestamp +  windowTime ) {
+				/*if ( timestampBuffer.buffer[k % bufferSize] > currentTimestamp +  windowTime ) {
 		
 					while(timestampBuffer.buffer[timestampBuffer.begin] <= currentTimestamp) {
 						timestampBuffer.begin = (timestampBuffer.begin + 1) % timestampBuffer.size;
@@ -114,11 +118,14 @@ public class StreamBench
 					
 					currentTimestamp += stepTime;
 					
+					for (int zw = 0; zw < resultList.size(); zw++) {				
+						System.out.println(resultList.get(zw));
+					}
 
 					
 					System.out.println("FOUND " + resultList.size());
 
-				}
+				}*/
 				currentStm.add(statements.get(k));
 				
 			}
@@ -135,10 +142,16 @@ public class StreamBench
 				RepositoryConnection con = repo.getConnection();	
 				con.add(currentStm);
 				String queryString = args[0];
+				
+				double queryStart = System.nanoTime();
 				TupleQuery tupleQuery = con.prepareTupleQuery(QueryLanguage.SPARQL, queryString);
 			    	TupleQueryResult result = tupleQuery.evaluate();
 			    	resultList = QueryResults.asList(result);
-									
+				double innerEnd = System.nanoTime();
+				double queryDuration = new Double ((innerEnd - queryStart) / (double) 1000000);
+				queryVec.add(queryDuration);
+				
+				
 				resultLen += resultList.size();
 				currentStm.clear();
 				
@@ -147,39 +160,57 @@ public class StreamBench
 				System.out.println("FOUND " + resultList.size());
 			}
 
-			double time = System.nanoTime() - start;
-			double duration = new Double (time / (double) 1000000);
-			timeVec.add(duration);
+
 		}
 		
 
-		double mean = 0;
-		double variance = 0;
-
-		for (Object value : timeVec) {
-			Double value2 = (Double) value;
-			mean += value2.doubleValue();
-			variance += value2.doubleValue() * value2.doubleValue();
-			System.out.println(value2);
+		queryVec.remove(0);
+		
+		Double mean = new Double(getMean(queryVec));
+		
+		for (int i = 0; i < queryVec.size(); i++) {
+			System.out.println(queryVec.get(i));
 		}
-
- 		mean = mean / (double) timeVec.size();
-		variance = variance / (double) (timeVec.size());
-		variance = variance - mean * mean;
-
-
-		System.out.println("Execution Variance is " + variance);
-		System.out.println("Execution Mean is " + mean);
-		System.out.println("Total lenght is " + resultLen);
-
-
+		
+		
+                System.out.println("total res are " + resultLen );
+                
+                
+		Files.write(Paths.get("./result.txt"),  (mean.toString() + " \n").getBytes(), StandardOpenOption.APPEND);
 	} catch (Exception e) {
 
 		System.out.println("error :");
 		System.out.println(e);
 		e.printStackTrace();
 	}
-
+	
 
     }
+    
+    
+    	public static double getMean(List elements) {
+		double mean = 0;
+                for (Object value : elements) {
+                        Double value2 = (Double) value;
+                        mean += value2.doubleValue();
+                }
+		mean = mean / (double) elements.size();
+		return mean;
+	}
+	
+	public static double getVariance(List elements) {
+		double mean = 0;
+		double variance = 0;
+                for (Object value : elements) {
+                        Double value2 = (Double) value;
+                        mean += value2.doubleValue();
+                        variance += value2.doubleValue() * value2.doubleValue();
+                }
+                
+                mean = mean / (double) elements.size();
+                variance = variance / (double) (elements.size());
+                variance = variance - mean * mean;
+
+		return variance;
+	}
 }
