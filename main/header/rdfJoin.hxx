@@ -153,7 +153,8 @@ class JoinOperation : virtual public Operation
 	
 		//Function for the join operation
 		template<int joinsize>
-		void rdfJoin() {		
+		void rdfJoin() {
+
 			using namespace mgpu;
 			standard_context_t context;
 
@@ -172,7 +173,7 @@ class JoinOperation : virtual public Operation
 			cudaMemcpy(outerindex, &outerVar_[0], sizeof(int) * joinsize, cudaMemcpyHostToDevice);
 
 			//Copy elements from the original tables to the reduced ones
-			int blockSize = 256;
+			int blockSize = 512;
 			int gridSize = innerTable_->height / blockSize + 1;	
 			reduceCopy<<<gridSize,  blockSize>>>(innerTable_->pointer, innertemp, innerTable_->width, innerindex, joinsize, innerTable_->height);
 			gridSize = outerTable_->height / blockSize + 1;
@@ -195,6 +196,7 @@ class JoinOperation : virtual public Operation
 			//Copy elements from the input tables to the output one
 			gridSize  = (joinResult.size() /blockSize) + 1;	
 			indexCopy<<<gridSize, blockSize>>>(result_.pointer, innerTable_->pointer, innertemp, outerTable_->pointer, outertemp, d_copyindex, innerTable_->width, outerTable_->width, copyindex_.size(), joinResult.data(), joinResult.size());
+
 
 			//Free all unused memory
 			delete(sorter);

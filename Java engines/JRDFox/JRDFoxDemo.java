@@ -63,9 +63,9 @@ public class JRDFoxDemo {
 
 
 			
-		int N_CYCLES = 100;
+		int N_CYCLES = 1;
 
-		int TEST_CYCLES = 200;
+		int TEST_CYCLES = 1;
 
 		int totalRes = 0;
 		List timeVec = new LinkedList();

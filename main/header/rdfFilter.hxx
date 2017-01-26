@@ -154,6 +154,16 @@ struct BinOp<Lit, Lit, operation_t> : public BasicOp {
 	
 				return op(value1, value2);
 			}
+			
+			case(4):{
+				std::string value1;
+				std::string value2;
+		
+				value1 = left.stringValue;
+				value2 = right.stringValue;
+	
+				return op(value1, value2);
+			}
 					
 			case(1): {
 				double value1 = left.numericValue;

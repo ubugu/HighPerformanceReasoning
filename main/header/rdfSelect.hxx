@@ -1,13 +1,18 @@
 #pragma once
 
 #include <cstdlib>
-#include <chrono>
 
 #include "types.hxx"
 #include "operations.hxx"
 
 
 enum class SelectArr { SPO = 0, S = 1, P = 2, O = 4, SP = 3, SO = 5, PO = 6, };
+
+
+/**
+* Functions for select. Target_pos indicate the position of the elements to be checked against the costants.
+* first, second and dest_pos indicate the destination position on the output array.
+*/
 
 //Select kernel for one constant select
 __global__ void unarySelect (CircularBuffer<size_t> src, int target_pos, int first_pos, int second_pos, size_t value, size_t* dest,  int* nextIndex) {
@@ -63,7 +68,8 @@ class SelectOperation : virtual public Operation
 			this->storePointer_ = storePointer;
 		};
 
-		void execute() {	
+		void execute() {
+			
 			CircularBuffer<size_t> d_storePointer = *storePointer_;
 			int storeSize = d_storePointer.getLength();
 
@@ -71,39 +77,47 @@ class SelectOperation : virtual public Operation
 			int* atomicIndex;
 			cudaMalloc(&atomicIndex, sizeof(int));
 			cudaMemset(atomicIndex, 0,  sizeof(int));
-			
-			int blockSize = 256;		
+			int blockSize = 512;		
 			int gridSize = (storeSize / blockSize) + 1;
-	 		
+
 	 		//Allocate result
-			result_.allocateOnDevice(storeSize);
-			
+			result_.allocateOnDevice(storeSize);				
+
 			//Select the correct kernel with specific parameters based on the position of the constants
 			switch(arr_) {
-
+				
+				//constant on SUBJECT
 				case(1): {
 					unarySelect<<<gridSize,blockSize>>>(d_storePointer, 0, 1, 2, constants_[0], result_.pointer,  atomicIndex);
 					break;
 				}
 
+				//constant on PREDICATE
 				case(2): {
 					unarySelect<<<gridSize,blockSize>>>(d_storePointer,  1, 0, 2, constants_[0], result_.pointer,  atomicIndex);
 					break;
 				}
 					
+					
+				//constant on OBJECT
 				case(4): {
 			        	unarySelect<<<gridSize,blockSize>>>(d_storePointer,  2, 0, 1, constants_[0], result_.pointer, atomicIndex);
 			        	break;
 				}
 		
+				//constant on SUBJECT and PREDICATE
 				case(3): {
 					binarySelect<<<gridSize,blockSize>>>(d_storePointer, 0, 1, 2, constants_[0], constants_[1], result_.pointer, atomicIndex);
 					break;
 				}
+				
+				//constant on SUBJECT and OBJECT
 				case(5): {
 					binarySelect<<<gridSize,blockSize>>>(d_storePointer, 0, 2, 1, constants_[0], constants_[1], result_.pointer, atomicIndex);
 					break;
 				}
+				
+				//constant on PREDICATE and OBJECT
 				case(6): {
 					binarySelect<<<gridSize,blockSize>>>(d_storePointer, 1, 2, 0, constants_[0], constants_[1], result_.pointer, atomicIndex);
 					break;
@@ -124,12 +138,14 @@ class SelectOperation : virtual public Operation
 				}
 			
 			}
-			
+
+
 			//Get actual output size	
 			cudaMemcpy(&result_.height, atomicIndex, sizeof(int), cudaMemcpyDeviceToHost);
 			
 			//Free unused memory
 			cudaFree(atomicIndex);
+
 		}
 		
 		

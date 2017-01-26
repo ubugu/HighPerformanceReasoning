@@ -1,18 +1,9 @@
 #pragma once
 
+#include "stdint.h" 
+
 #include <moderngpu/context.hxx>
 
-//TODO VARIABILI PER TESTING, DA RIMUOVERE DAL CODICE FINALE
-int VALUE = 0;
-int TEST = 0;
-std::vector<float> timeQueryVector;  
-std::vector<float> timeKernelVector;  
-std::vector<float> timeStoreVector;
-std::vector<float> hashVector;
-std::vector<float> testVector;  
-//**END TESTING***//
-
-#include "stdint.h" 
 #undef get16bits
 #if (defined(__GNUC__) && defined(__i386__)) || defined(__WATCOMC__) \
   || defined(_MSC_VER) || defined (__BORLANDC__) || defined (__TURBOC__)
@@ -28,8 +19,7 @@ std::vector<float> testVector;
 //NUMERIC contains: FLOAT, INTEGER, DOUBLE
 enum class Datatype{ STR = 0,  NUMERIC = 1, DATETIME = 2, BOOL = 3, URI = 4};
 
-//37 basic length
-//Considering type like "%value%"^^http://www.w3.org/2001/XMLSchema#%datatype%
+//Class for saving store elements, by deducting their type
 struct Lit  {
 	Datatype type;
 
@@ -43,6 +33,7 @@ struct Lit  {
 	Lit(std::string stringVal, Datatype typ) : stringValue(stringVal), type(typ){}
 	
 	//Function for creating literal, deducing the type from the string
+	//Considering type like "%value%"^^http://www.w3.org/2001/XMLSchema#%datatype%
 	static Lit createLiteral(std::string literalStr) {
 		int length = literalStr.length();
 		
@@ -51,25 +42,30 @@ struct Lit  {
 			return literal;
 		}
 	 
-		if (length < 42) {
+		if (literalStr[length - 4] == '"') {
+			Lit literal(literalStr.substr(0, length - 3));
+			return literal;
+		}
+		
+		if (literalStr[length - 1] == '"') {
 			Lit literal(literalStr);
 			return literal;
 		}
 		
-		if  (literalStr[length - 1] == 'g') {
+		if  (literalStr[length - 2] == 'g') {
 			Lit literal(literalStr.substr(0, length - 42));
 			return literal;
 		}
 
-		if (literalStr[length - 1] == 'r') {
-			std::string stringValue = literalStr.substr(1, length - 44);
+		if (literalStr[length - 2] == 'r') {
+			std::string stringValue = literalStr.substr(1, length - 46);
 			double value = stod (stringValue);
 			Lit literal(value, Datatype::NUMERIC, literalStr);
 			return literal;
 		}
 
 	
-		if (literalStr[length - 1] == 't') {
+		if (literalStr[length - 2] == 't') {
 			std::string stringValue = literalStr.substr(1, length - 42);
 			double value = stod (stringValue);
 			Lit literal(value, Datatype::NUMERIC, literalStr);
@@ -77,14 +73,37 @@ struct Lit  {
 		}	
 	
 	
-		if (literalStr[length - 2] == 'l') {
+		if (literalStr[length - 3] == 'l') {
 			std::string stringValue = literalStr.substr(1, length - 43);
 			double value = stod (stringValue);
 			Lit literal(value, Datatype::NUMERIC, literalStr);
 			return literal;
 		}
+
+
+		if (literalStr[length - 3] == 'S') {
+			std::string stringValue = literalStr.substr(1, length - 67);
+			double value = stod (stringValue);
+			Lit literal(value, Datatype::NUMERIC, literalStr);
+			return literal;
+		}		
 		
-		std::cout << "ERROR RESOURCE ENCOUNTERED" << std::endl;
+		if (literalStr[length - 3] == 't') {
+			//TODO implement date
+			double value = 0;
+			Lit literal(value, Datatype::DATETIME, literalStr);
+			return literal;
+		}
+		
+		if (literalStr[length - 3] == 'm') {
+			//TODO implement datetime
+			double value = 0;
+			Lit literal(value, Datatype::DATETIME, literalStr);
+			return literal;
+		}
+		
+		std::cout << "ERROR IN RESOURCE CREATION" << std::endl;
+		std::cout << "FOUND: "<< literalStr << "" << std::endl;
 		exit(-1);
 	
 	}
@@ -125,86 +144,60 @@ struct RelationTable {
 		onDevice = true;
 		width = header.size();
 		this->height = height;
+
 		cudaMalloc(&pointer, height * width * sizeof(size_t));	
 	}
-	
+		
 	~RelationTable(){}
 };
 
 
 
-/**
-**
-** CODE FOR HASH FUNCTION
-**
-**/
-template <std::size_t FnvPrime, std::size_t OffsetBasis>
-struct basic_fnv_1
-{
-    std::size_t operator()(std::string const& text) const
-    {
-        std::size_t hash = OffsetBasis;
-         for(std::string::const_iterator it = text.begin(), end = text.end();
-                 it != end; ++it)
-         {
-             hash *= FnvPrime;
-             hash ^= *it;
-         }
-         return hash;
+//hash function
+uint32_t  hashFunction(const char * data, int len) {
+	uint32_t hash = len, tmp;
+	int rem;
 
-     }
-};
+	if (len <= 0 || data == NULL) return 0;
 
-const basic_fnv_1< 1099511628211u, 14695981039346656037u> hashFunction;
+	rem = len & 3;
+	len >>= 2;
 
+	/* Main loop */
+	for (;len > 0; len--) {
+		hash  += get16bits (data);
+		tmp    = (get16bits (data+2) << 11) ^ hash;
+		hash   = (hash << 16) ^ tmp;
+		data  += 2*sizeof (uint16_t);
+		hash  += hash >> 11;
+	}
 
+	/* Handle end cases */
+	switch (rem) {
+		case 3: hash += get16bits (data);
+			hash ^= hash << 16;
+			hash ^= ((signed char)data[sizeof (uint16_t)]) << 18;
+			hash += hash >> 11;
+			break;
+		case 2: hash += get16bits (data);
+			hash ^= hash << 11;
+			hash += hash >> 17;
+			break;
+		case 1: hash += (signed char)*data;
+			hash ^= hash << 10;
+			hash += hash >> 1;
+		}
 
-uint32_t sdbm (const char * data, int len) {
-uint32_t hash = len, tmp;
-int rem;
+	/* Force "avalanching" of final 127 bits */
+	hash ^= hash << 3;
+	hash += hash >> 5;
+	hash ^= hash << 4;
+	hash += hash >> 17;
+	hash ^= hash << 25;
+	hash += hash >> 6;
 
-    if (len <= 0 || data == NULL) return 0;
-
-    rem = len & 3;
-    len >>= 2;
-
-    /* Main loop */
-    for (;len > 0; len--) {
-        hash  += get16bits (data);
-        tmp    = (get16bits (data+2) << 11) ^ hash;
-        hash   = (hash << 16) ^ tmp;
-        data  += 2*sizeof (uint16_t);
-        hash  += hash >> 11;
-    }
-
-    /* Handle end cases */
-    switch (rem) {
-        case 3: hash += get16bits (data);
-                hash ^= hash << 16;
-                hash ^= ((signed char)data[sizeof (uint16_t)]) << 18;
-                hash += hash >> 11;
-                break;
-        case 2: hash += get16bits (data);
-                hash ^= hash << 11;
-                hash += hash >> 17;
-                break;
-        case 1: hash += (signed char)*data;
-                hash ^= hash << 10;
-                hash += hash >> 1;
-    }
-
-    /* Force "avalanching" of final 127 bits */
-    hash ^= hash << 3;
-    hash += hash >> 5;
-    hash ^= hash << 4;
-    hash += hash >> 17;
-    hash ^= hash << 25;
-    hash += hash >> 6;
-
-    return hash;
+	return hash;
 }
-
-
 
 
 

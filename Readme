@@ -1,0 +1,20 @@
+
+
+INSTALL:
+	-clone moderngpu repository https://github.com/moderngpu/moderngpu/wiki
+
+
+
+
+
+
+
+EXAMPLE OF RUN:
+	-./timeHash ../rdfStore/strts200.txt "PREFIX test:<http://example.org/int/> SELECT * FROM STREAM <streamUri> RANGE 100000s STEP 100000s  WHERE {  ?s ?p test:0 .  ?s ?w  <http://example.org/int/1>  } "
+
+
+
+
+Input Files: N-triples elements, with timestamp annexed (expressed in ms). Example:  <http://example.org/int/113> <http://example.org/int/173> <http://example.org/int/188> . 2000
+
+

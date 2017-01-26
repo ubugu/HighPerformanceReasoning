@@ -3,18 +3,15 @@
 #include <cstdlib>
 #include <fstream>
 #include <unordered_map>
-
-#include <sparsehash/dense_hash_map>
-
+	
 #include "types.hxx"
 #include "rdfOptional.hxx"
 #include "rdfSelect.hxx"
 #include "rdfJoin.hxx"
 #include "rdfUnion.hxx"
 #include "rdfFilter.hxx"
+#include "rdfProduct.hxx"
 #include "outputDirective.hxx"
-
-using google::dense_hash_map;
 
 const SelectArr ELEMENT_VALUE[3] = {SelectArr::S, SelectArr::P, SelectArr::O};
 
@@ -113,7 +110,7 @@ unsigned long int timeParse(std:: string word) {
 BasicOp* filterParser(char** pointer, char* end, std::unordered_map<size_t, Lit>* hashMap, std::vector<std::string> variables) {
 	std::string word;
 	word = nextWord(pointer, end, ' ');
-	//ISBOUND OP
+
 	if ((word == "(") || (word == "!(")) {
 		BasicOp* leftOp;
 		if (word[0] == '!') {
@@ -184,10 +181,16 @@ BasicOp* filterParser(char** pointer, char* end, std::unordered_map<size_t, Lit>
 				literalInput.push_back(literal);
 			} else {
 				//Assuming string = "%string", numeric = %value% or "%vakue"^^%type%
-				if (input[i][input[i].length()] != '"') {
+				if (input[i][0] == '<') {
+					Lit literal(input[i], Datatype::URI);
+					literalInput.push_back(literal);
+					
+				} else 	if (input[i][input[i].length()] != '"') {
+					std::cout << "CALLED STOD ON " << input[i] << std::endl;
 					double value = std::stod(input[i]);
 					Lit literal(value, Datatype::NUMERIC, "");
 					literalInput.push_back(literal);
+					
 				} else {
 					Lit literal = Lit::createLiteral(input[i]);
 					literalInput.push_back(literal);
@@ -236,13 +239,15 @@ BasicOp* filterParser(char** pointer, char* end, std::unordered_map<size_t, Lit>
 			exit(-1);
 		} 
 	}
+	
+	return NULL;
 }
 /**
 ** End filter parser section
 **/		
 
 //Parse a basic SPARQL block element, delimitated by { and }	
-std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer<size_t>* rdfPointer, std::unordered_map<size_t, Lit>* hashMap, std::unordered_map<std::string, size_t>* inverseHashMap) {		
+std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer<size_t>* rdfPointer, std::unordered_map<size_t, Lit>* hashMap, std::unordered_map<std::string, size_t>* inverseHashMap, std::unordered_map<std::string, std::string> prefixes) {		
 	std::vector<Operation*> operationsVector;			
 	std::string word;
 	bool tripleEnded = true;
@@ -252,7 +257,7 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 	while (word != "}") {
 		//Code for subblock
 		if (word == "{") {
-			std::vector<Operation*>  subBlock = blockElement(pointer, end, rdfPointer, hashMap, inverseHashMap);
+			std::vector<Operation*>  subBlock = blockElement(pointer, end, rdfPointer, hashMap, inverseHashMap, prefixes);
 			
 			if (subBlock.size() != 0) {
 				std::vector<std::string> blockVariables = subBlock.back()->getVariables();
@@ -287,13 +292,14 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 					}
 					
 					if (outerCopyvar.size() == blockVariables.size()) {
-						//TODO 
-						std::cout << "NOT IMPLEMENTED YET, VARIABLE MUST APPEAR IN ORDER." << std::endl;
-						exit(-1);	
+						variable_stack.insert(variable_stack.end(), outerCopyvar.begin(), outerCopyvar.end());
+						ProductOperation* product = new ProductOperation(operationsVector.back()->getResultAddress(), subBlock.back()->getResultAddress(), variable_stack);
+						operationsVector.insert(operationsVector.end(), subBlock.begin(), subBlock.end());
+						operationsVector.push_back(product);
+						
 					} else {
 						variable_stack.insert(variable_stack.end(), outerCopyvar.begin(), outerCopyvar.end());
 						JoinOperation* joinop = new JoinOperation(operationsVector.back()->getResultAddress(), subBlock.back()->getResultAddress(),  innerIndex, outerIndex, outerCopyindex, variable_stack);
-						
 						operationsVector.insert(operationsVector.end(), subBlock.begin(), subBlock.end());
 						operationsVector.push_back(joinop);
 					}
@@ -309,7 +315,7 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 			word = nextWord(pointer, end, ' ');
 			testWord("{", word);
 			
-			std::vector<Operation*>  subBlock = blockElement(pointer, end, rdfPointer, hashMap, inverseHashMap);
+			std::vector<Operation*>  subBlock = blockElement(pointer, end, rdfPointer, hashMap, inverseHashMap, prefixes);
 			
 			if (subBlock.size() != 0) {
 				std::vector<std::string> blockVariables = subBlock.back()->getVariables();
@@ -345,9 +351,10 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 					}
 					
 					if (outerCopyvar.size() == blockVariables.size()) {
-						//TODO 
-						std::cout << "NOT IMPLEMENTED YET, VARIABLE MUST APPEAR IN ORDER." << std::endl;
-						exit(-1);	
+						variable_stack.insert(variable_stack.end(), outerCopyvar.begin(), outerCopyvar.end());
+						ProductOperation* product = new ProductOperation(operationsVector.back()->getResultAddress(), subBlock.back()->getResultAddress(), true, variable_stack);
+						operationsVector.insert(operationsVector.end(), subBlock.begin(), subBlock.end());
+						operationsVector.push_back(product);
 					} else {
 						variable_stack.insert(variable_stack.end(), outerCopyvar.begin(), outerCopyvar.end());
 						OptionalOperation* optionalop = new OptionalOperation(operationsVector.back()->getResultAddress(), subBlock.back()->getResultAddress(),  innerIndex, outerIndex, outerCopyindex, variable_stack);
@@ -363,7 +370,6 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 		
 		//Code for FILTER evaluation
 		} else if (word == "FILTER") {
-			//TODO FILTER CODE
 			word = nextWord(pointer, end, ' ');
 			testWord("(", word);
 			BasicOp* filter = filterParser(pointer, end, hashMap, variable_stack);
@@ -414,26 +420,46 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 											
 				} else {
 	
-					size_t hashValue; 
-					
-					//Check if it has been already hashed
-					if ((*inverseHashMap)[word] != 0) {
-						hashValue = (*inverseHashMap)[word];
-					} else {
-						//Calculate hash value
-						hashValue = hashFunction(word);
-					
-						//value 0 is reserved for unbound value
-						hashValue = (hashValue == 0 ? hashValue + 1 : hashValue);
-					
-						//Check for collisions
-						while ((*hashMap)[hashValue].stringValue != "") {
-							hashValue++;
+					//Search for prefix
+					if (word[0] != '<') {
+						int splitIndex = word.find(':');
+						if (splitIndex == -1) {
+							std::cout << "ERROR IN RESOURCE PARSING" << std::endl;
+							std::cout << "FOUND " << std::endl;
+							exit(-1);
 						}
 						
+						
+						std::string prefix = word.substr(0, splitIndex);
+						std::string elementPrefix = word.substr(splitIndex + 1);
+						std::string uri = prefixes[prefix];
+
+
+						word = uri.substr(0, uri.length() - 1) + elementPrefix;
+						word += ">";
+					}				
+	
+					size_t hashValue; 
+					
+					//NORMAL POLICY
+					//Calculate hash value
+					hashValue = hashFunction(word.c_str(), word.size());
+					
+					//value 0 is reserved for unbound value
+					hashValue = (hashValue == 0 ? hashValue + 1 : hashValue);
+					
+					auto mapValue = (*hashMap)[hashValue].stringValue;
+					if (mapValue != "") {
+						if(mapValue != word) {
+							//Check for collisions
+							do {
+								hashValue++;
+							} while ((*hashMap)[hashValue].stringValue != "");
+						
+						} 
+					} else {
 						(*hashMap)[hashValue] = Lit::createLiteral(word);
-						(*inverseHashMap)[word] = hashValue;					
-					}
+					}					
 					
 					constants.push_back(hashValue);
 					arr += static_cast<int> (ELEMENT_VALUE[i]);   
@@ -442,7 +468,8 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 				word = nextWord(pointer, end, ' ');
 			}
 		
-		
+	
+			
 			SelectOperation* currentselect = new SelectOperation(constants, selectVariable, arr);
 			currentselect->setStorePointer(rdfPointer);
 		
@@ -454,9 +481,10 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 			} else {
 			
 				if (outerCopyvar.size() == selectVariable.size()) {
-					//TODO 
-					std::cout << "NOT IMPLEMENTED YET, VARIABLE MUST APPEAR IN ORDER." << std::endl;
-					exit(-1);	
+					variable_stack.insert(variable_stack.end(), outerCopyvar.begin(), outerCopyvar.end());
+					ProductOperation* product = new ProductOperation(operationsVector.back()->getResultAddress(), currentselect->getResultAddress(), variable_stack);
+					operationsVector.push_back(currentselect);
+					operationsVector.push_back(product);	
 				} else {
 					variable_stack.insert(variable_stack.end(), outerCopyvar.begin(), outerCopyvar.end());
 					JoinOperation* joinop = new JoinOperation( operationsVector.back()->getResultAddress(), currentselect->getResultAddress(),  innerIndex, outerIndex, outerCopyindex, variable_stack);
@@ -473,7 +501,7 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 			}
 			
 		} else {
-			std::cout << "PARSING ERROR " << tripleEnded << std::endl;
+			std::cout << "PARSING ERROR " << tripleEnded << " at  " << *pointer << std::endl;
 			exit(-1);
 		}
 			
@@ -485,20 +513,19 @@ std::vector<Operation*>  blockElement(char** pointer, char* end,  CircularBuffer
 
 	//Check if pointer is at the end of the query string
 	temp = nextChar(temp, end);
-	std::cout << temp << " END " << end;
+
 	if (temp == end) {
-		std::cout << "ESCO " << std::endl;
 		return operationsVector; 
 	}
 	word = nextWord(&temp, end, ' ');
 	
-
+	//Create operation for union
 	if (word == "UNION") {
 		*pointer = temp;
 		word = nextWord(pointer, end, ' ');
 		testWord("{", word);
 		
-		std::vector<Operation*>  subBlock = blockElement(pointer, end, rdfPointer, hashMap, inverseHashMap);
+		std::vector<Operation*>  subBlock = blockElement(pointer, end, rdfPointer, hashMap, inverseHashMap, prefixes);
 		if (subBlock.size() != 0) {
 			std::vector<std::string> blockVariables = subBlock.back()->getVariables();
 			

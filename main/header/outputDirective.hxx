@@ -33,7 +33,7 @@ class SelectDirective : public OutputDirective{
 			
 			std::vector<std::string> variables = input.header;
 			size_t* final_relationalTable;
-			
+
 			//Copy element from device memory or from main memory
 			if (input.onDevice) {	
 				final_relationalTable = (size_t*) malloc(input.height * input.width * sizeof(size_t));
@@ -41,14 +41,15 @@ class SelectDirective : public OutputDirective{
 			} else {
 				final_relationalTable = input.pointer;
 			}	
-			
-			std::vector<std::string> output;
-			//Dehash and save variable in the output vector;
+	
+			//Dehash and save variable in the output vector; 
+			//TODO output print is currently commented.
 			if ( variablesProjection_.size() == 0) {
 				for (int i =0; i < input.height; i++) {
 					for (int k = 0; k < input.width; k++) {
-						output.push_back(mapH[final_relationalTable[i * input.width + k]].stringValue );
-					//	std::cout << variables[k] << "=" <<   mapH[final_relationalTable[i * input.width + k]].stringValue << " ";
+						const char* value = mapH[final_relationalTable[i * input.width + k]].stringValue.c_str() ;
+
+						//std::cout << variables[k] << "=" <<   mapH[final_relationalTable[i * input.width + k]].stringValue << " ";
 					}
 					//std::cout << std::endl;
 				}
@@ -56,42 +57,15 @@ class SelectDirective : public OutputDirective{
 				for (int i =0; i < input.height; i++) {
 					for (int k = 0; k < variablesProjection_.size(); k++) {
 						int currentIndex = variablesProjection_[k];
-						output.push_back(mapH[final_relationalTable[i * input.width + currentIndex ]].stringValue );
-					//	std::cout << variables[currentIndex] << "=" <<   mapH[final_relationalTable[i * input.width + currentIndex]].stringValue  << " ";
+						(mapH[final_relationalTable[i * input.width + currentIndex ]].stringValue );
+						//std::cout << variables[currentIndex] << "=" <<   mapH[final_relationalTable[i * input.width + currentIndex]].stringValue  << " ";
 					}
 					//std::cout << std::endl;
 				}
 			}
-	
-			//Test value to be removed
-			VALUE += input.height;
+
+
 		}
-};
-
-//Class for ASK directive for output formatting
-class AskDirective {
-
 
 };
 
-
-/*
-struct OutGraph {
-	//Number of triple * 3
-	int pattern_size;
-	//HASH MAP PER VARIBILI
-	//HASH   
-	//Vettore Preallocato contenente gia le variabili costanti. Devo solo metttere nei posti giusti le varaibili.
-	std::vector<std::string> graphPattern;
-}*/
-
-
-
-
-
-//Class for CONSTRUCT directive for output formatting
-class ConstructDirective {
-
-
-
-};

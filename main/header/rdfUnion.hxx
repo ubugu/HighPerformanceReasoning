@@ -62,7 +62,7 @@ class UnionOperation : public Operation
 			result_.allocateOnDevice(first_->height + second_->height);
 			
 			/*
-			**Execute the union by xopying the two input table into the output one. 
+			**Execute the union by copying the two input table into the output one. 
 			**If the two table have the same header the cudaMemcpy function is used
 			** otherwise two specialised function are used-
 			*/
